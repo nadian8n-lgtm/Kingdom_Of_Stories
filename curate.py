@@ -42,10 +42,16 @@ def _grams(text, n=4):
     return {tuple(w[i:i + n]) for i in range(max(0, len(w) - n + 1))}
 
 
+def _is_book_list(a):
+    return "كتب مجانية لتعلم" in (a.get("title") or "") or a.get("kind") == "books"
+
+
 def duplicates(a, b):
     ta, tb = set(_words(a["title"])), set(_words(b["title"]))
     if ta and tb and (ta == tb or len(ta & tb) / len(ta | tb) >= 0.75):
         return True
+    if _is_book_list(a) and _is_book_list(b):
+        return False      # two different book lists share the layout, not the story: only an identical title is a duplicate
     ga, gb = _grams(a.get("content", "")), _grams(b.get("content", ""))
     return bool(ga and gb and len(ga & gb) / min(len(ga), len(gb)) >= 0.40)
 
@@ -122,13 +128,17 @@ def classify_llm(items, llm, categories):
 def run(arts, categories, llm=None, limit=30, log=print):
     """Returns (removed_articles, moved_count). Mutates `arts` in place."""
     removed = dedupe(arts)
-    todo = [(k, a) for k, v in arts.items() for a in v if not a.get("cat_ok")][:limit]
+    # «المكتبة الرقمية المجانية» is written deterministically from the book repository: never classify into or out of it.
+    for a in arts.get("ar_books", []):
+        a["cat_ok"] = True
+    cats = {k: v for k, v in categories.items() if k != "ar_books"}
+    todo = [(k, a) for k, v in arts.items() for a in v if not a.get("cat_ok") and k != "ar_books"][:limit]
     verdict = {}
     if llm and todo:
         for i in range(0, len(todo), 10):
             chunk = [a for _, a in todo[i:i + 10]]
             try:
-                verdict.update(classify_llm(chunk, llm, categories))
+                verdict.update(classify_llm(chunk, llm, cats))
             except Exception as ex:
                 log("classification by the model failed, using keyword scoring:", str(ex)[:120])
                 break
