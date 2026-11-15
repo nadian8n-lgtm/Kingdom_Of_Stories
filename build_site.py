@@ -36,11 +36,12 @@ CATEGORIES = {
     "ar_tech": "تكنولوجيا",
     "ar_sports": "رياضة",
     "ar_arts": "فن وثقافة",
+    "ar_books": "المكتبة الرقمية المجانية",
 }
 # Moroccan outlets are not used as sources in the international sections (Morocco is covered through Google Trends).
-# Exception: «أخبار المدن» is local crime/security news that only the national press reports, so its sources are kept
-# and always cited (publisher + link) under the article.
-MOROCCAN_OK_CATS = {"ar_cities"}
+# Exceptions: «أخبار المدن» is local crime/security news that only the national press reports, and «رياضة» covers the
+# national team and the Botola, which the local sports press reports first; sources are always cited under the article.
+MOROCCAN_OK_CATS = {"ar_cities", "ar_sports"}
 MOROCCAN_HOSTS = ("hespress", "le360", "hibapress", "alyaoum24", "medias24", "2m.ma", "snrt", "map.ma", "mapexpress",
                   "barlamane", "goud.ma", "chouftv", "yabiladi", "lakome", "akhbarona", "assahifa", "almaghribtoday",
                   "h24info", "lematin", "leconomiste", "telquel", "aujourdhui.ma", "bladi", "febrayer", "anfaspress",
@@ -49,6 +50,11 @@ MOROCCAN_HOSTS = ("hespress", "le360", "hibapress", "alyaoum24", "medias24", "2m
                   "hibapress", "tanja24", "bayanealyaoume", "sahraa", "alakhbar", "alakhbar.ma", "tanja24.com",
                   "kech24.com", "barlamane.com", "alyaoum24.com", "anfaspress.com", "almaghribtoday.net")
 e = html.escape
+
+BOOKS_LEAD = ('<p class="city-lead">مكتبة رقمية مجانية بالكامل: كل مقال يختار لك خمسة كتب حقيقية للتعلّم الذاتي، '
+              'بعناوينها وأسماء مؤلفيها وروابط القراءة والتحميل، مأخوذة من مستودع '
+              '<a href="https://github.com/EbookFoundation/free-programming-books" rel="nofollow noopener" target="_blank">'
+              'Free Programming Books</a> المفتوح. لا اشتراك ولا دفع ولا ملفات مقرصنة.</p>')
 
 POLL_BANK = [
     ("ما أكثر مجال إخباري تحرص على متابعته يوميًا؟", ["السياسة", "الاقتصاد", "التكنولوجيا", "الرياضة", "الفن والثقافة"]),
@@ -147,11 +153,25 @@ def cdn(a, w, h=0):
     return u.replace("/upload/", f"/upload/{t}/", 1)
 
 
+def _ver(rel):
+    """Modification time of the picture, used as a cache-buster in the URL."""
+    try:
+        return str(int((ROOT / urllib.parse.unquote(rel)).stat().st_mtime))
+    except Exception:
+        return ""
+
+
 def img_src(a, pre, w):
-    """(src, onerror-fallback) : CDN first, local file as safety net."""
-    local = pre + (thumb(a["image"]) if w <= 600 else a["image"])
+    """(src, onerror-fallback) : CDN first, local file as safety net.
+    The URL carries ?v=<file time>, so a regenerated picture can never be hidden by the browser or the service worker."""
+    rel = thumb(a["image"]) if w <= 600 else a["image"]
+    v = _ver(a["image"])
+    local = pre + rel + (f"?v={v}" if v else "")
     c = cdn(a, w)
-    return (c, f' onerror="this.onerror=null;this.src=\'{e(local)}\'"') if c else (local, "")
+    if c:
+        c = c + ((f"&v={v}" if "?" in c else f"?v={v}") if v else "")
+        return c, f' onerror="this.onerror=null;this.src=\'{e(local)}\'"'
+    return local, ""
 
 
 def thumb(rel):
@@ -212,7 +232,7 @@ def HAS_DEALS():
 
 def header(pre, data, active):
     ticker = "  •  ".join(a["title"] for k in CATEGORIES for a in data[k][:2]) or "نكسوس بريس — أخبار العالم على مدار الساعة"
-    nav_names = {k: (("🏙️ " + v) if k == "ar_cities" else v) for k, v in CATEGORIES.items()}
+    nav_names = {k: (("🏙️ " + v) if k == "ar_cities" else ("📚 " + v) if k == "ar_books" else v) for k, v in CATEGORIES.items()}
     items = ([("index.html", "الرئيسية", "home")] + [(f"category-{k}.html", nav_names[k], k) for k in CATEGORIES]
              + [("weather.html", "🌦️ الطقس والصلاة", "weather"), ("ai-academy.html", "🎓 أكاديمية AI", "ai")]
              + ([("deals/index.html", "🛒 عروض أمازون", "deals")] if HAS_DEALS() else []))
@@ -234,10 +254,16 @@ def header(pre, data, active):
 
 
 def footer(pre):
+    cats = "".join(f'<li><a href="{pre}category-{k}.html">{e(v)}</a></li>' for k, v in CATEGORIES.items())
+    services = (f'<li><a href="{pre}weather.html">الطقس ومواقيت الصلاة</a></li>'
+                f'<li><a href="{pre}ai-academy.html">أكاديمية الذكاء الاصطناعي</a></li>'
+                + (f'<li><a href="{pre}deals/index.html">عروض أمازون</a></li>' if HAS_DEALS() else ""))
+    info = (f'<li><a href="{pre}about.html">من نحن</a></li><li><a href="{pre}contact.html">اتصل بنا</a></li>'
+            f'<li><a href="{pre}privacy-policy.html">سياسة الخصوصية</a></li><li><a href="{pre}feed.xml">RSS</a></li>')
     return f"""<footer class="footer"><div class="container footer-grid">
 <div><h4>نكسوس بريس | Nexus Press</h4><p>جريدة إلكترونية تتابع أبرز أحداث العالم في السياسة والاقتصاد والتكنولوجيا والرياضة والثقافة.</p></div>
-<div><h4>الأقسام</h4><ul>{"".join(f'<li><a href="{pre}category-{k}.html">{e(v)}</a></li>' for k, v in CATEGORIES.items())}</ul></div>
-<div><h4>معلومات</h4><ul><li><a href="{pre}category-ar_cities.html">أخبار المدن</a></li><li><a href="{pre}weather.html">الطقس ومواقيت الصلاة</a></li><li><a href="{pre}ai-academy.html">أكاديمية الذكاء الاصطناعي</a></li>{f'<li><a href="{pre}deals/index.html">عروض أمازون</a></li>' if HAS_DEALS() else ''}<li><a href="{pre}about.html">من نحن</a></li><li><a href="{pre}contact.html">اتصل بنا</a></li><li><a href="{pre}privacy-policy.html">سياسة الخصوصية</a></li><li><a href="{pre}feed.xml">RSS</a></li></ul></div>
+<div><h4>الأقسام والخدمات</h4><ul>{cats}{services}</ul></div>
+<div><h4>معلومات</h4><ul>{info}</ul></div>
 </div><div class="footer-bottom">© {datetime.now().year} نكسوس بريس. جميع الحقوق محفوظة.</div></footer>
 <button class="to-top" id="to-top" type="button" aria-label="أعلى الصفحة">↑</button>
 <div id="google_translate_element" style="display:none"></div>
@@ -290,14 +316,36 @@ def sidebar(pre, data, poll):
             f'{ad("side2", "sticky")}</aside>')
 
 
+LINK_RX = re.compile(r"\[([^\]]{1,200})\]\((https?://[^)\s]+)\)")
+
+
+def inline_md(text):
+    """Escapes everything, then turns ONLY safe http(s) Markdown links into real links.
+    Used by the book lists (the links come from the repository) and by the articles themselves."""
+    out, last = [], 0
+    for m in LINK_RX.finditer(text):
+        out.append(e(text[last:m.start()]))
+        label, url = m.group(1), m.group(2)
+        out.append(f'<a href="{e(url)}" rel="nofollow noopener" target="_blank">{e(label)}</a>')
+        last = m.end()
+    out.append(e(text[last:]))
+    return "".join(out)
+
+
 def render_body(content):
     out, n = [], 0
     for block in re.split(r"\n\s*\n", content.strip()):
         block = block.strip()
         if block.startswith("## "):
-            out.append(f"<h2>{e(block[3:].strip())}</h2>")
-        elif block:
-            out.append(f"<p>{e(block)}</p>")
+            out.append(f"<h2>{inline_md(block[3:].strip())}</h2>")
+            continue
+        lines = [l.strip() for l in block.splitlines() if l.strip()]
+        if lines and all(l.startswith("- ") for l in lines):
+            lis = "".join(f"<li>{inline_md(l[2:].strip())}</li>" for l in lines)
+            out.append(f'<ul class="book-list">{lis}</ul>')
+            continue
+        if block:
+            out.append(f"<p>{inline_md(block)}</p>")
             n += 1
             if n in (3, 7, 11):
                 out.append(ad("inline"))
@@ -398,6 +446,8 @@ def build():
         if k == "ar_cities":
             extra = (city_chips("") +
                      '<p class="city-lead">حوادث، جرائم، قضايا، أمن ومدن: تابع ما يقع في مدينتك، مع ذكر المصادر في أسفل كل مقال.</p>')
+        elif k == "ar_books":
+            extra = BOOKS_LEAD
         if not data[k]:
             cards_html = '<div class="empty">سيبدأ نشر أخبار المدن في الدورة القادمة. اختر مدينتك من اللائحة أعلاه.</div>'
         more_link = f'<p class="more"><a class="badge" href="category-{k}.html">كل مقالات {e(name)} ←</a></p>'
@@ -422,6 +472,8 @@ def build():
         if k == "ar_cities":
             extra = (city_chips("") + '<p class="city-lead">قسم مخصص لكل ما يقع في مدن المملكة: الحوادث والجرائم والقضايا '
                      'والأمن والتحقيقات، بأسلوب صحفي معمّق ومع ذكر المصادر. اختر مدينتك لتقرأ أخبارها وحدها.</p>')
+        elif k == "ar_books":
+            extra = BOOKS_LEAD
         inner = (f'<div class="layout"><main><h1 class="block-title">{e(name)}</h1>{extra}<div class="grid">{cards}</div>{ad("middle")}</main>'
                  f'{sidebar("", data, poll)}</div>')
         (ROOT / f"category-{k}.html").write_text(shell(f"{name} | نكسوس بريس", f"آخر مقالات قسم {name} في جريدة نكسوس بريس.", "",
