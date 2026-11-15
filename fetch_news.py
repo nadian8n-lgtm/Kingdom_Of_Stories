@@ -14,11 +14,19 @@ City news (category ar_cities) = accidents, crime, courts and security in Morocc
 allowed ONLY in this section.
 
 TEXT providers (tried in this order, only those with a key): Gemini -> Groq -> OpenRouter
-IMAGE providers (IMAGE_PROVIDERS, default "gemini,genai,openai"): Gemini image generation first, then the optional Gen AI SDK
-and ChatGPT images. Pollinations and random stock photos were removed: they returned generic or unrelated pictures (often
-people who had nothing to do with the story). If no provider works, a local SVG placeholder is used and replaced on a later run.
+IMAGE providers (IMAGE_PROVIDERS, default "gemini,cloudflare,together,hfspace,genai,openai"): Gemini first, then the
+FREE Flux providers (Cloudflare Workers AI, Together AI free FLUX.1-schnell-Free, and the keyless Hugging Face FLUX
+Space), then the optional Gen AI SDK and the paid ChatGPT images. Pollinations and random stock photos were removed:
+they returned generic or unrelated pictures (often people who had nothing to do with the story). If no provider works,
+a local SVG placeholder is used and replaced on a later run.
+
+CITY / CRIME ARTICLES: no person is ever named. The text is built only from what the court established, what the judicial
+investigation found (if any) and what reputable press reported, with legal/journalistic analysis inside legal limits.
+A second editing pass rewrites any personal name (suspect, victim, witness, officer, judge, lawyer) into a neutral role.
 
 Env: GEMINI_API_KEY / GROQ_API_KEY / OPENROUTER_API_KEY,
+CF_ACCOUNT_ID + CF_API_TOKEN (free Cloudflare Workers AI Flux), TOGETHER_API_KEY (free Together AI FLUX.1-schnell-Free),
+HF_IMAGE_SPACE / HF_TOKEN (optional: the keyless Hugging Face FLUX Space works without any key),
 OPENAI_API_KEY / OPENAI_IMAGE_MODEL (optional, ChatGPT images), GEMINI_TEXT_MODEL / GEMINI_IMAGE_MODEL (optional),
 MAX_PER_RUN (6), MIN_PER_CATEGORY (6), KEEP_PER_CATEGORY (30),
 PAUSE_SECONDS (8), CLOUDINARY_URL (or CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET) -> images are also
@@ -43,6 +51,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import build_site
+import books_library
 import cities
 import curate
 
@@ -52,10 +61,19 @@ GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 GROQ_KEY = os.getenv("GROQ_API_KEY", "")
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY", "").strip()   # optional: ChatGPT images (gpt-image-1), paid
-# Gemini image generation first, then the Gen AI SDK and ChatGPT images.
-# Pollinations and picsum are hard-disabled: their pictures were generic and unrelated to the headline.
-IMAGE_PROVIDERS = [p.strip() for p in (os.getenv("IMAGE_PROVIDERS") or "gemini,genai,openai").split(",") if p.strip()]
-IMAGE_PROVIDERS = [p for p in IMAGE_PROVIDERS if p not in ("pollinations", "picsum")]
+CF_ACCOUNT = (os.getenv("CF_ACCOUNT_ID") or os.getenv("CLOUDFLARE_ACCOUNT_ID") or "").strip()      # free Cloudflare Workers AI
+CF_TOKEN = (os.getenv("CF_API_TOKEN") or os.getenv("CLOUDFLARE_API_TOKEN") or "").strip()
+TOGETHER_KEY = os.getenv("TOGETHER_API_KEY", "").strip()   # free FLUX.1-schnell-Free tier
+# Gemini image generation first, then the two FREE Flux providers, then the optional SDK / paid ChatGPT images.
+# Every picture is generated for THIS story only; there are no stock-photo or random-picture providers any more.
+PIPELINE_VER = "2026-11-15b"   # printed at the start of every run, so the Actions log proves which code is running
+KNOWN_IMAGE_PROVIDERS = ("gemini", "cloudflare", "together", "hfspace", "genai", "openai")
+IMAGE_PROVIDERS = [p.strip() for p in (os.getenv("IMAGE_PROVIDERS") or ",".join(KNOWN_IMAGE_PROVIDERS)).split(",") if p.strip()]
+# only the providers implemented below can ever run, even if an old workflow still lists a retired one
+IMAGE_PROVIDERS = [p for p in IMAGE_PROVIDERS if p in KNOWN_IMAGE_PROVIDERS]
+if "hfspace" not in IMAGE_PROVIDERS:
+    IMAGE_PROVIDERS.append("hfspace")   # keyless free FLUX Space: last resort, works even if the workflow still lists only paid providers
+ANON_VER = 3   # bump this when the anonymiser rules change: every city/crime article is re-checked once
 MAX_PER_RUN = int(os.getenv("MAX_PER_RUN") or "6")
 MIN_PER_CAT = int(os.getenv("MIN_PER_CATEGORY") or "6")
 KEEP = int(os.getenv("KEEP_PER_CATEGORY") or "30")
@@ -129,11 +147,15 @@ TOPIC_FEEDS = {
     ],
     "ar_sports": [
         ("المنتخب المغربي", gn("المنتخب المغربي OR أسود الأطلس OR حكيمي OR بونو OR زياش")),
-        ("الديربي المغربي", gn("الديربي المغربي OR الوداد OR الرجاء OR الجيش الملكي")),
+        ("مباريات المغرب", gn("المنتخب المغربي مباراة OR نتيجة OR أهداف OR تصفيات")),
+        ("البطولة المغربية", gn("البطولة الوطنية المغربية OR الدوري المغربي OR الوداد OR الرجاء OR الجيش الملكي")),
+        ("كأس أفريقيا", gn("كأس أمم أفريقيا OR تصفيات أفريقيا OR CAF")),
+        ("نجوم المغرب", gn("حكيمي OR بونو OR زياش OR أمرابط OR أوناحي OR إبراهيم دياز OR بن صغير")),
         ("الدوري الإنجليزي", gn("الدوري الإنجليزي OR ليفربول OR مانشستر سيتي OR أرسنال OR تشيلسي")),
         ("ريال مدريد وبرشلونة", gn("ريال مدريد OR برشلونة OR الكلاسيكو OR دوري أبطال أوروبا")),
         ("نجوم العالم", gn("ميسي OR رونالدو OR مبابي OR هالاند OR نيمار")),
-        ("Morocco football", gn("Morocco national team Hakimi Bounou World Cup", "en", "US")),
+        ("Morocco football", gn("Morocco national team Hakimi Bounou AFCON", "en", "US")),
+        ("Morocco AFCON", gn("Morocco AFCON qualifier Atlas Lions result", "en", "US")),
     ],
     "ar_economy": [
         ("الأسواق العالمية", gn("الأسواق العالمية OR النفط OR الذهب OR الدولار OR الفيدرالي")),
@@ -156,6 +178,11 @@ ICONS = {"ar_local": "🇲🇦", "ar_cities": "🏙️", "ar_world": "🌍", "ar
 COLORS = {"ar_local": "#0b3c7a", "ar_cities": "#9a3412", "ar_world": "#0369a1", "ar_economy": "#047857",
           "ar_tech": "#6d28d9", "ar_sports": "#b45309", "ar_arts": "#be185d"}
 
+# قواعد الأسلوب البشري والسلامة اللغوية التي تُضاف إلى كل كتابة تحريرية
+STYLE_RULES = """- لغة عربية فصحى سليمة: راجع الهمزات (أ/إ/آ) والتاء المربوطة (ة/ه) وعلامات الإعراب، وتجنّب الأخطاء الإملائية والنحوية.
+- أسلوب بشري طبيعي مئة بالمئة: جمل متنوعة الطول، انتقالات سلسة، بلا تكرار آلي وبلا عبارات جاهزة مثل «في الختام» أو «تجدر الإشارة» أو «لا شك أن» أو «في عالم اليوم».
+- لا تخاطب القارئ بعبارات تعليمية، ولا تكرّر اسم القسم أو عنوان المقال داخل النص، ولا تكتب فقرة تلخّص المقال كله في آخره."""
+
 SYSTEM = """أنت صحفي عربي محترف بخبرة طويلة في غرف الأخبار، تكتب مقالات إخبارية أصلية بأسلوب صحفي رصين وسلس.
 القواعد:
 - اكتب بصياغتك الخاصة تماماً. لا تنقل جملاً من المصدر ولا تترجمها حرفياً ولا تحاكِ ترتيب فقراته.
@@ -172,6 +199,7 @@ SYSTEM = """أنت صحفي عربي محترف بخبرة طويلة في غر�
 - الفقرات قصيرة ومريحة للقراءة على الهاتف: من جملتين إلى 4 جمل، بلا كتل نصية طويلة. العناوين الفرعية جمل وصفية قصيرة لا علامات ترقيم زائدة فيها.
 - الخلفية والتأثير يعتمدان فقط على المواد المقدمة أو على معلومات عامة معروفة ومؤكدة؛ وإن لم تتوفر تفاصيل فاشرح السياق العام دون اختلاق وقائع محددة.
 - الطول بين {LO} و{HI} كلمة. لا تخاطب القارئ بعبارات مثل «بصفتي». لا تنسب المقال لشخص حقيقي. التزم الحياد ولا تُبدِ رأياً سياسياً أو دينياً.
+{STYLE}
 - أعد JSON فقط بالشكل: {"title": "...", "summary": "جملتان كحد أقصى", "image_prompt": "English prompt", "body": ["فقرة افتتاحية", "## عنوان فرعي", "فقرة", "## عنوان فرعي", "فقرة", ...]}
 - image_prompt: وصف إنجليزي مفصّل (40 إلى 70 كلمة) لمشهد فوتوغرافي تحريري يعبّر مباشرة عن حدث المقال نفسه، بعناصر بصرية ملموسة وخاصة بهذا الخبر
   (المكان، الأشياء، الأجواء، الإضاءة، زاوية التصوير)، وليس مشهداً عاماً يصلح لأي خبر. بدون نصوص أو حروف أو شعارات أو علامات تجارية،
@@ -181,21 +209,88 @@ CITY_SYSTEM = """أنت محقق صحفي مغربي مخضرم في قسم ال
 أسلوبك: سرد أدبي مشدود، بلاغة بلا مبالغة، تفاصيل حسّية دقيقة، وإيقاع يدفع القارئ إلى آخر سطر، مع التزام صارم بأخلاقيات المهنة.
 القواعد الإلزامية:
 - اكتب بصياغتك الخاصة تماماً ولا تنقل جملاً من المصادر.
-- استخدم فقط الوقائع والأرقام والأسماء والتصريحات الواردة في المواد المقدمة. لا تخترع أي معلومة، ولا تُكمل الفراغات من خيالك.
-- قرينة البراءة: كل متهم بريء حتى تثبت إدانته. استخدم «المشتبه فيه» و«حسب المصادر» و«تشير المعطيات» بدل الجزم.
-- لا تذكر أسماء الضحايا ولا القاصرين ولا تفاصيل تسمح بالتعرف عليهم، ولا أسماء متهمين لم تُعلنها السلطات رسمياً.
-- لا تُدِن أحداً ولا تُصدر حكماً، ولا تُشهر بأشخاص أو عائلات أو مناطق. لا خطاب كراهية ولا مسّ بالمقدسات أو الأديان.
+- استخدم فقط الوقائع والأرقام والتصريحات الواردة في المواد المقدمة. لا تخترع أي معلومة، ولا تُكمل الفراغات من خيالك.
+- ممنوع منعاً باتاً ذكر أي اسم شخص، مهما كان دوره: المتهم، الضحية، الشاهد، الشرطي، الدركي، القاضي، المحامي، المسؤول، الطبيب، أو أي قريب.
+  استعمل دائماً الصفات: «المشتبه فيه»، «الضحية»، «الشاهد»، «عنصر أمني»، «مسؤول محلي»، «مصدر قضائي». لا أسماء عائلات ولا أحرف أولى ولا ألقاب.
+- لا تذكر تفاصيل تُعرّف بالأشخاص (العنوان الدقيق، اسم الحي الصغير، سن القاصر، مهنة نادرة، صلة القرابة)، ولا تنشر أسماء أماكن صغيرة قد تكشف الضحية.
+- لا تذكر أسماء الشركات أو الجمعيات أو الهيئات الخاصة التي تكون طرفاً في القضية؛ استعمل «الجهة المعنية» أو «المؤسسة المعنية».
+- ابنِ المادة فقط على ما اقتضته المحكمة وما انتهت إليه التحريات القضائية إن وُجدت، وما تداولته الصحف المعروفة والموثوقة.
+  إن لم يصدر حكم بعد، فاكتفِ بما هو معلن رسمياً وبما أوردته تلك الصحف، وانسب المعلومة إلى «المصادر» أو «التحقيقات» دون جزم.
+- حلّل الخبر من الجانب القانوني والصحفي في حدود المسموح به قانوناً: قرينة البراءة، سرية التحقيق، حماية المعطيات الشخصية، حق الرد.
+  لا تُدِن أحداً ولا تُصدر حكماً ولا تُشهّر بشخص أو عائلة أو منطقة. لا اتهامات مباشرة ولا تكهنات بالدوافع.
+- استخدم «المشتبه فيه» و«حسب المصادر» و«تشير المعطيات» بدل الجزم. كل متهم بريء حتى تثبت إدانته بحكم نهائي.
 - لا وصف دموي مقزز ولا تفاصيل جنسية، وتجنّب الإثارة الرخيصة. الإثارة تكون في السرد لا في الإسفاف.
 - لا تذكر أسماء الصحف داخل النص؛ يكفي أن يقول «حسب ما أوردته مصادر إعلامية».
 البنية (5 إلى 6 أقسام، كل قسم يبدأ بـ '## ' في عنصر مستقل):
   1) المشهد الافتتاحي: ابدأ بمشهد حسّي أو لحظة زمنية تضع القارئ داخل الحدث، بلا عنوان.
-  2) ما حدث بالضبط: التسلسل الزمني والمكان والأطراف، كما ورد في المواد.
-  3) من المتضرر: أثر الحادث على السكان والضحايا وعائلاتهم، بلغة إنسانية حذرة.
+  2) ما حدث بالضبط: التسلسل الزمني والمكان والأطراف (بأدوارهم لا بأسمائهم)، كما ورد في المواد.
+  3) ما تقوله المحكمة والتحريات: خلاصات الحكم أو التحقيق القضائي إن وُجدت، بلغة دقيقة دون أسماء.
   4) الأطراف الرسمية: ما قالته السلطات أو النيابة أو الدرك أو الشرطة، حرفياً إن ورد.
-  5) السياق الاجتماعي: هل الحادث معزول أم يعكس ظاهرة أوسع؟ اعتمد على المعطيات المتوفرة فقط.
+  5) القراءة القانونية: ما يعنيه الملف قانوناً للقارئ (الإجراءات، الحقوق، قرينة البراءة)، بلا فتوى ولا حكم شخصي.
   6) ما ينتظره الملف: الإجراءات القضائية أو الأمنية المحتملة، بصيغة «من المتوقع» و«يُنتظر».
 - الطول بين {LO} و{HI} كلمة. فقرات من جملتين إلى 4 جمل.
+{STYLE}
 - أعد JSON فقط: {"title": "...", "summary": "جملتان", "image_prompt": "English prompt", "body": ["فقرة", "## عنوان", "فقرة", ...]}"""
+
+SPORTS_SYSTEM = """أنت محرر رياضي عربي مخضرم في صحيفة كبرى، تتابع الكرة المغربية والعالمية، وتكتب تحليلاً صحفياً حياً يقرأه الجمهور حتى آخر سطر.
+أسلوبك: مشهد من أرضية الملعب، إيقاع سريع، تحليل تكتيكي واضح، بلا مبالغة ولا شتائم ولا إثارة رخيصة.
+القواعد الإلزامية:
+- لا تخترع النتيجة ولا الأهداف ولا دقائق التسجيل ولا التشكيلة ولا التبديلات ولا التصريحات ولا الإحصائيات: كل رقم أو اسم لاعب أو تصريح يجب أن يكون في المواد المرجعية.
+- إن لم تذكر المواد نتيجة المباراة صراحة فلا تكتب نتيجة، واكتفِ بما هو مؤكد.
+- التحليل التكتيكي مسموح كاستنتاج واضح من الوقائع (الضغط العالي، البناء من الخلف، التحولات، الكرات الثابتة)، لكن بصيغة «بدا» و«أظهر» و«يمكن قراءة»، لا كحقائق مطلقة.
+- لا تهاجم لاعباً أو مدرباً أو جمهوراً أو حكماً، ولا تنشر شائعات أو اتهامات، ولا تذكر أي شخص في سياق قضائي أو جدل شخصي.
+- اذكر أسماء اللاعبين والمدربين فقط إذا وردت في المواد وفي سياق رياضي بحت، وبلا أوصاف مسيئة.
+- أضف سياقاً مؤكداً فقط (تاريخ المواجهات، أهمية البطولة، ترتيب المجموعة)، وإلا فاشرح السياق العام دون أرقام مخترعة. لا تنسخ عبارات المصدر ولا تترجمها حرفياً.
+- لا تكتب أن الخبر «أثار جدلاً» أو «انقسمت الآراء» إن لم تكن المواد تقول ذلك.
+{STYLE}
+البنية (5 إلى 6 أقسام، كل قسم عنوانه عنصر مستقل يبدأ بـ '## '):
+  1) فقرة افتتاحية بلا عنوان: لحظة حاسمة أو مشهد من المباراة يضع القارئ في قلب الحدث، ثم الفكرة العامة.
+  2) «## ما حدث في المباراة»: التسلسل والنتيجة والأطراف كما وردت في المواد فقط.
+  3) «## القراءة التكتيكية»: كيف لعب الفريقان، وأين كسب أحدهما الأرض، وأي تفاصيل صنعت الفارق.
+  4) «## نجوم اللقاء والمفاتيح»: الأدوار والأداء كما تصفه المصادر، بلا مبالغة وبلا تقييمات مخترعة.
+  5) «## ماذا يعني هذا الفوز»: أثره في الترتيب أو التأهل أو معنويات الفريق، بحدود ما تسمح به المواد.
+  6) «## الطريق إلى المباراة القادمة»: الاستحقاقات التالية والاستعدادات المتوقعة بصيغة «يُنتظر» و«من المرجح».
+- الطول بين {LO} و{HI} كلمة. فقرات من جملتين إلى 4 جمل.
+- أعد JSON فقط بالشكل: {"title": "...", "summary": "جملتان", "image_prompt": "English prompt", "body": ["فقرة", "## عنوان", "فقرة", ...]}
+- image_prompt: وصف إنجليزي (40 إلى 70 كلمة) لمشهد كروي تحريري مباشر من الحدث نفسه (الملعب، الكرة، الشبكة، الجماهير من بعيد، الأجواء، الإضاءة)، بدون نصوص أو شعارات، وبدون وجوه أشخاص حقيقيين أو لقطات احتفال شخصية."""
+
+# صحفي قانوني يعيد صياغة أي مقال مدن/جرائم دون أي اسم شخص (حماية قانونية وأخلاقية)
+ANON_SYSTEM = """أنت محرر قانوني في صحيفة عربية. مهمتك الوحيدة: إعادة صياغة مقال عن حادث أو جريمة أو قضية مدنية/جنائية
+دون أن يبقى فيه أي اسم شخص، مع الحفاظ على الوقائع والأرقام والأماكن الكبرى والمؤسسات ومعنى الخبر.
+القواعد:
+- احذف كل اسم شخص (متهم، ضحية، شاهد، شرطي، دركي، قاضٍ، محامٍ، مسؤول، طبيب، قريب) واستبدله بدوره: «المشتبه فيه»،
+  «الضحية»، «الشاهد»، «عنصر أمني»، «مصدر قضائي»، «مسؤول محلي».
+- احذف الألقاب والأحرف الأولى وأسماء العائلات وأي تفصيل يكشف هوية الشخص (العنوان الدقيق، مهنة نادرة، سن القاصر).
+- لا تذكر أسماء الشركات أو المتاجر أو الجمعيات أو الهيئات الخاصة التي تكون طرفاً في القضية؛ استعمل «الجهة المعنية» أو «المؤسسة المعنية».
+  أما المؤسسات العمومية (النيابة العامة، المصالح الأمنية، المحكمة، الدرك) فتُبقى كما هي، بلا أسماء أشخاص.
+- لا تُدِن أحداً ولا تُصدر حكماً ولا تُشهّر بشخص أو عائلة أو منطقة، ولا تنشر اتهاماً بلا دليل؛ القضاء وحده يقرّر.
+- لا تحذف أسماء المدن والمؤسسات والقوانين والأرقام والتواريخ. لا تضف وقائع جديدة ولا اتهامات ولا استنتاجات.
+- حافظ على البنية: نفس العناوين الفرعية التي تبدأ بـ '## ' وعدد الفقرات وتقريباً نفس الطول (فقرات من جملتين إلى 4 جمل).
+- لا تذكر أسماء الصحف داخل النص.
+- أعد JSON فقط: {"title": "...", "summary": "جملتان", "body": ["فقرة", "## عنوان", "فقرة", ...]}"""
+
+# كلمات تدل على خبر حوادث/جرائم داخل «أخبار المغرب» (ar_local) فتُطبَّق عليها نفس حماية الأسماء
+CRIME_WORDS = ("جريمة", "جناية", "جنحة", "قتل", "اغتيال", "اعتداء", "اعتقال", "موقوف", "متهم", "ضحية",
+               "نيابة عامة", "تحقيق قضائي", "درك", "شرطة", "سرقة", "سطو", "تهريب", "مخدرات", "اختطاف",
+               "اغتصاب", "تحرش", "جثة", "سجن", "شكاية", "تبليغ", "قضية جنائية")
+
+# «المكتبة الرقمية المجانية»: مقال SEO قصير حول قائمة كتب حقيقية تُضاف آلياً من مستودع Free Programming Books
+BOOKS_SYSTEM = """أنت محرر محتوى عربي متخصص في التعلّم الذاتي والكتب المجانية القانونية، وتكتب لجريدة نكسوس بريس.
+المطلوب: مقال قصير مفيد ومحسّن لمحركات البحث عن قائمة كتب مجانية في مجال محدد، بين {LO} و{HI} كلمة.
+القواعد الإلزامية:
+- لا تضع أي رابط في النص، ولا تكتب عنوان كتاب ولا اسم مؤلف ولا سعراً ولا دار نشر: القائمة الحقيقية تُضاف آلياً في المكان المحدد.
+- لا تصف محتوى كتاب بعينه ولا عدد صفحاته ولا مستواه، لأنك لا تعرف إلا عناوين القائمة. تحدّث عن المجال وخطة التعلّم عموماً.
+- لا تخترع أرقاماً أو إحصائيات أو شهادات أو تجارب شخصية. لا تذكر أنك ذكاء اصطناعي ولا تخاطب القارئ بعبارة «بصفتي».
+- لغة عربية فصحى واضحة، جمل قصيرة، بلا حشو وبلا مبالغات تسويقية. لا وعود بالوظيفة أو المال.
+- احترم حقوق المؤلفين: شدّد على أن الكتب مجانية قانوناً وأن حقوقها تبقى لأصحابها.
+البنية بالضبط:
+  1) فقرة افتتاحية بلا عنوان: هوك واقعي عن تعلّم هذا المجال بالعربية وبالمجان (سؤال أو مفارقة أو مشهد دراسة)، ثم فكرة المقال.
+  2) قسم يبدأ بعنصر مستقل: '## لماذا هذه الكتب'
+  3) ثم عنصر مستقل واحد فقط يحتوي بالضبط: '## __BOOKS__'  (مكان القائمة، لا تكتب شيئاً آخر في هذا العنصر)
+  4) قسم يبدأ بعنصر مستقل: '## خطة دراسة عملية' (ترتيب منطقي للدراسة، تمارين، مشاريع صغيرة، مدة تقديرية أسبوعية)
+  5) قسم يبدأ بعنصر مستقل: '## كيف تستفيد إلى أقصى حد' (تدوين الملاحظات، التطبيق العملي، المراجعة، تجنّب التشتت)
+- كل فقرة من جملتين إلى 4 جمل. لا عناوين إضافية ولا خاتمة منفصلة.
+- أعد JSON فقط بالشكل: {"title": "العنوان كما هو مطلوب", "summary": "جملتان", "body": ["فقرة", "## لماذا هذه الكتب", "فقرة", "## __BOOKS__", "## خطة دراسة عملية", "فقرة", "## كيف تستفيد إلى أقصى حد", "فقرة"]}"""
 
 PROMPT_SYSTEM = """You are the award-winning picture editor of an international news agency.
 You receive a news headline and the first three paragraphs of an Arabic article.
@@ -228,6 +323,7 @@ IMG_STYLE = {
     "ar_tech": "modern technology editorial photograph, clean futuristic atmosphere",
     "ar_sports": "dynamic sports photography, stadium energy, motion",
     "ar_arts": "cultural editorial photography, rich color and atmosphere",
+    "ar_books": "editorial still-life photograph of books and a laptop on a desk, warm library light, no people",
 }
 ANGLES = ["wide establishing shot", "low-angle shot", "aerial drone view", "intimate close-up of a telling object", "shot from behind a silhouette",
           "symmetrical centered composition", "telephoto compressed perspective", "shallow depth of field detail shot",
@@ -584,6 +680,25 @@ def pick_city_story(used, arts):
     return None
 
 
+MOROCCO_SPORT_WORDS = ("المغرب", "المغربي", "المغاربة", "أسود الأطلس", "morocco", "atlas lions")
+SPORT_MATCH_WORDS = ("مباراة", "مباريات", "فوز", "الفوز", "خماسية", "رباعية", "ثلاثية", "هدف", "أهداف", "تصفيات",
+                     "كأس", "دوري", "منتخب", "لقاء", "استعداد", "بطولة", "beat", "win", "wins", "victory", "qualifier",
+                     "afcon", "goal", "match", "botola", "derby")
+
+
+def pick_morocco_sport(used):
+    """A fresh unused headline about the Moroccan national team, the Botola or an Atlas Lions player.
+    It guarantees that a big result (like a national-team win) becomes an article in the same run, before any other section."""
+    for name, url in TOPIC_FEEDS["ar_sports"]:
+        for it in read_gn(name, url, allow_moroccan=True):
+            if it["url"] in used:
+                continue
+            t = it["title"].lower()
+            if any(w in t for w in MOROCCO_SPORT_WORDS) and any(w in t for w in SPORT_MATCH_WORDS):
+                return it
+    return None
+
+
 def page_text(url):
     if "news.google." in url:      # Google News discovery links do not expose the article body
         return ""
@@ -615,7 +730,7 @@ def overlap(paras, sources, n=5):
 
 
 def parse_json(text):
-    text = re.sub(r"(?is)<think>.*?</think>", "", text).strip()
+    text = re.sub(r"(?is) thinking.*?", "", text).strip()
     a, b = text.find("{"), text.rfind("}")
     return json.loads(text[a:b + 1])
 
@@ -623,7 +738,7 @@ def parse_json(text):
 def write_article(cat_name, sources, trend=None, system=None, city=None, lo=None, hi=None):
     lo = lo or ((MIN_WORDS_TREND, MAX_WORDS_TREND) if trend else (MIN_WORDS, MAX_WORDS))[0]
     hi = hi or ((MIN_WORDS_TREND, MAX_WORDS_TREND) if trend else (MIN_WORDS, MAX_WORDS))[1]
-    system = (system or SYSTEM).replace("{LO}", str(lo)).replace("{HI}", str(hi))
+    system = (system or SYSTEM).replace("{LO}", str(lo)).replace("{HI}", str(hi)).replace("{STYLE}", STYLE_RULES)
     material = "\n\n".join(f"[{s['publisher']}] {s['title']}\n{s['text'] or s['desc']}" for s in sources)
     user = f"القسم: {cat_name}\n"
     if city:
@@ -656,6 +771,51 @@ def write_article(cat_name, sources, trend=None, system=None, city=None, lo=None
         user += (f"\n\nملاحظة: المحاولة السابقة كانت {n} كلمة وتشابه {ov:.0%} مع المصدر. "
                  f"المطلوب بين {lo} و{hi} كلمة وبصياغة جديدة كلياً بعيدة عن عبارات المصدر.")
     return best
+
+
+def write_books_article(payload):
+    """Short SEO article for «المكتبة الرقمية المجانية». The prose is written by the model; the five real books,
+    their links, authors, formats and the licence note are injected deterministically from the repository, so the
+    published links can never be hallucinated."""
+    title, books = payload["title"], payload["books"]
+    lo, hi = 450, 800
+    system = BOOKS_SYSTEM.replace("{LO}", str(lo)).replace("{HI}", str(hi))
+    names = "\n".join(f"- {b['title']}" + (f" — {b['author']}" if b["author"] else "") for b in books)
+    user = (f"المجال: {payload['label']}\nالعنوان المطلوب بالضبط: {title}\n"
+            f"عناوين الكتب الخمسة (للسياق فقط، ممنوع ذكرها في النص):\n{names}\n\nاكتب المقال الآن.")
+    marker = "## __BOOKS__"
+    for attempt in range(3):
+        try:
+            res = parse_json(generate_text(system, user))
+            raw = res["body"]
+            body = [raw] if isinstance(raw, str) else list(raw)
+            body = [re.sub(r"\s+", " ", str(p)).strip() for p in body if str(p).strip()]
+        except Exception as ex:
+            print("bad JSON from model (books), retrying:", str(ex)[:100])
+            continue
+        # the real links are injected below: remove any link or raw URL the model added on its own
+        body = [re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", re.sub(r"https?://\S+", "", p)).strip() for p in body]
+        body = [p for p in body if p]
+        n = sum(len(re.findall(r"\S+", p)) for p in body if not p.startswith("## "))
+        heads = sum(1 for p in body if p.startswith("## ") and p != marker)
+        print(f"books attempt {attempt + 1}: {n} words, {heads} section headings")
+        if n < 420 or heads < 2:
+            user += "\n\nملاحظة: المقال السابق كان أقصر من المطلوب أو تنقصه الأقسام. التزم بالبنية المطلوبة وعدد الكلمات."
+            continue
+        if n > hi:
+            user += f"\n\nملاحظة: المقال السابق كان {n} كلمة وهو أطول من الحد. اختصره بين {lo} و{hi} كلمة."
+            continue
+        block = books_library.list_block(books)
+        idx = next((i for i, p in enumerate(body) if p == marker or p.startswith("## __BOOKS__")), None)
+        if idx is None:
+            tail = next((i for i, p in enumerate(body) if p.startswith("## ") and "كيف تستفيد" in p), len(body))
+            body = body[:tail] + [block] + body[tail:]
+        else:
+            body = body[:idx] + [block] + body[idx + 1:]
+        body.append(books_library.credit_block(payload))
+        return {"title": title, "summary": payload["summary"], "body": body,
+                "image_prompt": payload["visual_prompt"]}
+    return None
 
 
 # ----------------------------------------------------------------------------- images (unique, expressive, no watermark)
@@ -809,6 +969,88 @@ def image_genai(prompt, seed):
     return data, False
 
 
+def image_cloudflare(prompt, seed):
+    """FREE image generation on Cloudflare Workers AI (Flux.1 schnell). Account id + API token only, no card needed.
+    https://developers.cloudflare.com/workers-ai/models/flux-1-schnell/
+    The model replies with {"success": true, "result": {"image": "<base64>"}}."""
+    if not (CF_ACCOUNT and CF_TOKEN):
+        raise ApiError(0, "CF_ACCOUNT_ID / CF_API_TOKEN not set", "cloudflare")
+    model = os.getenv("CF_IMAGE_MODEL", "").strip() or "@cf/black-forest-labs/flux-1-schnell"
+    payload = {"prompt": prompt[:2000], "steps": int(os.getenv("CF_IMAGE_STEPS") or "6")}
+    res = call_json(f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT}/ai/run/{model}", payload,
+                    {"Authorization": f"Bearer {CF_TOKEN}"}, "cloudflare", tries=2)
+    if not res.get("success", True):
+        raise ApiError(0, json.dumps(res.get("errors") or res)[:300], "cloudflare")
+    result = res.get("result") or {}
+    b64 = result.get("image") or result.get("b64_json")
+    if b64:
+        return base64.b64decode(b64), False
+    if result.get("url"):
+        return request(result["url"], timeout=120), False
+    raise ApiError(0, "no image in the Cloudflare response", "cloudflare")
+
+
+def image_together(prompt, seed):
+    """FREE FLUX.1 [schnell] Free endpoint on Together AI (rate-limited free tier, TOGETHER_API_KEY, no card needed)."""
+    if not TOGETHER_KEY:
+        raise ApiError(0, "TOGETHER_API_KEY not set", "together")
+    model = os.getenv("TOGETHER_IMAGE_MODEL", "").strip() or "black-forest-labs/FLUX.1-schnell-Free"
+    payload = {"model": model, "prompt": prompt[:2000], "width": 1280, "height": 720, "steps": 4,
+               "n": 1, "response_format": "b64_json"}
+    res = call_json("https://api.together.xyz/v1/images/generations", payload,
+                    {"Authorization": f"Bearer {TOGETHER_KEY}"}, "together", tries=2)
+    item = (res.get("data") or [{}])[0]
+    if item.get("b64_json"):
+        return base64.b64decode(item["b64_json"]), False
+    if item.get("url"):
+        return request(item["url"], timeout=120), False
+    raise ApiError(0, "no image in the Together response", "together")
+
+
+def image_hfspace(prompt, seed):
+    """Free, keyless last resort: the official FLUX.1-schnell demo Space on Hugging Face (Gradio API).
+    Anonymous visitors share a free GPU quota; any failure simply falls through to the next provider."""
+    space = (os.getenv("HF_IMAGE_SPACE") or "black-forest-labs/FLUX.1-schnell").strip()
+    space = re.sub(r"[^a-z0-9]+", "-", space.lower()).strip("-")
+    base = f"https://{space}.hf.space"
+    headers = {"Content-Type": "application/json"}
+    if os.getenv("HF_TOKEN", "").strip():
+        headers["Authorization"] = f"Bearer {os.getenv('HF_TOKEN').strip()}"
+    payload = {"data": [prompt[:1500], int(seed) % 2147483647, False, 1024, 576, 4]}
+    res = json.loads(request(f"{base}/gradio_api/call/infer", payload, headers, timeout=90))
+    eid = res.get("event_id")
+    if not eid:
+        raise ApiError(0, "no event_id from the Hugging Face Space", "hfspace")
+    data, event, deadline = None, "", time.time() + 180
+    while time.time() < deadline:
+        raw = request(f"{base}/gradio_api/call/infer/{eid}", headers=headers, timeout=120).decode("utf-8", "ignore")
+        for line in raw.splitlines():
+            if line.startswith("event:"):
+                event = line[6:].strip()
+                continue
+            if not line.startswith("data:"):
+                continue
+            try:
+                obj = json.loads(line[5:].strip())
+            except Exception:
+                continue
+            if event == "error":
+                raise ApiError(0, f"Hugging Face Space error: {str(obj)[:200]}", "hfspace")
+            if obj:
+                data = obj
+        if data is not None:
+            break
+        time.sleep(2)
+    if not data:
+        raise ApiError(0, "Hugging Face Space timed out", "hfspace")
+    item = data[0] if isinstance(data, list) and data else data
+    path = (item.get("url") or item.get("path")) if isinstance(item, dict) else (item if isinstance(item, str) else "")
+    if not path:
+        raise ApiError(0, f"no image in the Hugging Face reply: {str(data)[:150]}", "hfspace")
+    url = path if str(path).startswith("http") else f"{base}/gradio_api/file={path}"
+    return request(url, timeout=120), False
+
+
 def fallback_svg(stem, cat):
     """Placeholder used only when no provider produced a picture. Unique per article (seeded by its id), no text or emoji,
     and replaced automatically by a real illustration on a later run (see heal_images)."""
@@ -828,7 +1070,7 @@ def fallback_svg(stem, cat):
 
 
 def make_image(prompt, art_id, cat, file_stem=None):
-    """Returns (relative image path, credit dict or None). A credit ({"source": "picsum"}) exists only for stock photographs."""
+    """Returns (relative image path, credit dict or None). No stock photos: every picture is generated for THIS story."""
     out = ROOT / "images"
     out.mkdir(exist_ok=True)
     stem = file_stem or art_id
@@ -840,7 +1082,15 @@ def make_image(prompt, art_id, cat, file_stem=None):
     if Image:
         known_hashes()
         for prov in IMAGE_PROVIDERS:
-            if prov in STATE["dead_image"] or (prov in ("gemini", "genai") and not GEMINI_KEY) or (prov == "openai" and not OPENAI_KEY):
+            if prov in STATE["dead_image"]:
+                continue
+            if prov in ("gemini", "genai") and not GEMINI_KEY:
+                continue
+            if prov == "openai" and not OPENAI_KEY:
+                continue
+            if prov == "cloudflare" and not (CF_ACCOUNT and CF_TOKEN):
+                continue
+            if prov == "together" and not TOGETHER_KEY:
                 continue
             chosen, chosen_h = None, None
             for attempt in range(4):  # new seed + new angle/light each time until the picture is not a look-alike
@@ -849,6 +1099,12 @@ def make_image(prompt, art_id, cat, file_stem=None):
                 try:
                     if prov == "gemini":
                         raw, crop = image_gemini(full)
+                    elif prov == "cloudflare":
+                        raw, crop = image_cloudflare(full, seed)
+                    elif prov == "together":
+                        raw, crop = image_together(full, seed)
+                    elif prov == "hfspace":
+                        raw, crop = image_hfspace(full, seed)
                     elif prov == "genai":
                         raw, crop = image_genai(full, seed)
                     elif prov == "openai":
@@ -858,19 +1114,21 @@ def make_image(prompt, art_id, cat, file_stem=None):
                     img = Image.open(io.BytesIO(raw)).convert("RGB")
                 except Exception as ex:
                     print(f"image provider '{prov}' failed:", str(ex)[:160])
-                    if prov in ("genai", "openai") and re.search(r"limit: 0|free.?tier|not.?found|permission|forbidden|api key|cannot find|ERR_MODULE|billing|insufficient_quota|invalid_api_key|must be verified|HTTP 40[13]", str(ex), re.I):
+                    if re.search(r"limit: 0|free.?tier|not.?found|permission|forbidden|api key|cannot find|ERR_MODULE|billing|"
+                                 r"insufficient_quota|invalid_api_key|must be verified|unauthorized|authentication|not set|HTTP 40[13]",
+                                 str(ex), re.I):
                         print(f"{prov} cannot be used with this key/setup -> skipping it for this run, using the next provider")
                         STATE["dead_image"].add(prov)
-                    elif prov in ("pollinations", "genai", "openai", "picsum"):
-                        STATE["poll_fail"] += 1
-                        if STATE["poll_fail"] >= 3:
-                            STATE["dead_image"].add(prov)
+                        if prov == "gemini":
+                            STATE["dead_image"].add("genai")   # same key/project: the SDK fallback cannot work either
                     else:
-                        STATE["dead_image"].add(prov)
+                        STATE["poll_fail"] += 1   # rate limit / transient: retry it on the next article, drop it after 4 in a row
+                        if STATE["poll_fail"] >= 4:
+                            print(f"{prov} failed {STATE['poll_fail']} times in a row -> skipping it for this run")
+                            STATE["dead_image"].add(prov)
                     break
-                if prov in ("pollinations", "genai", "openai", "picsum"):
-                    STATE["poll_fail"] = 0
-                if crop:  # anonymous Pollinations images carry a logo strip at the bottom
+                STATE["poll_fail"] = 0
+                if crop:
                     img = img.crop((0, 0, img.width, int(img.height * 0.925)))
                 if not image_ok(img):
                     continue
@@ -884,7 +1142,7 @@ def make_image(prompt, art_id, cat, file_stem=None):
                 path = out / f"{stem}.webp"
                 chosen.save(path, "WEBP", quality=86, method=6)
                 STATE["hashes"][stem] = chosen_h
-                return f"images/{path.name}", ({"source": "picsum"} if prov == "picsum" else None)
+                return f"images/{path.name}", None
     svg = out / f"{stem}.svg"
     svg.write_text(fallback_svg(stem, cat), encoding="utf-8")
     return f"images/{svg.name}", None
@@ -905,20 +1163,105 @@ def image_prompt_for(art):
         return f"editorial photograph illustrating: {art['title']}"
 
 
+def needs_anon(cat, text=""):
+    """City news is always anonymised; «أخبار المغرب» only when the headline/summary is clearly crime/security/court news."""
+    if cat == "ar_cities":
+        return True
+    return cat == "ar_local" and any(w in text for w in CRIME_WORDS)
+
+
+# صيغ صريحة لتسمية الأشخاص تُحذف دائماً حتى لو فشل المحرر القانوني (شبكة أمان أخيرة)
+NAME_RX = [
+    (re.compile(r"(?:المسمى|المسمّى|المدعو|المدعوة|يدعى|تدعى|يُدعى|تُدعى)\s*(?:بـ|ب)?\s*(?:\([^)]{1,40}\)|«[^»]{1,40}»|\"[^\"]{1,40}\")"),
+     "المشتبه فيه"),
+    (re.compile(r"\([A-Za-z\u0621-\u064A]\.\s*[A-Za-z\u0621-\u064A]\.\)"), ""),  # initials: (م.ب)
+]
+
+
+def regex_scrub(text):
+    out = str(text)
+    for rx, repl in NAME_RX:
+        out = rx.sub(repl, out)
+    return out
+
+
+def anonymize_art(art, cat):
+    """Second editing pass: rewrite the article so NO person is named (suspect, victim, witness, officer, judge, lawyer).
+    Facts, numbers, cities and institutions are kept. Returns the modified art dict; sets art['anon'] only when the
+    legal-editor pass actually succeeded, so a failed pass is retried on the next run."""
+    payload = {"title": art["title"], "summary": art.get("summary", ""), "body": art["body"]}
+    try:
+        res = parse_json(generate_text(ANON_SYSTEM, json.dumps(payload, ensure_ascii=False)))
+        body = [regex_scrub(str(p)) for p in res["body"]]
+        heads = sum(1 for p in body if p.lstrip().startswith("## "))
+        if len(body) >= 6 and heads >= 4:
+            art["title"] = regex_scrub(str(res.get("title") or art["title"]))
+            art["summary"] = regex_scrub(str(res.get("summary") or art.get("summary", "")))
+            art["body"] = body
+            art["anon"] = ANON_VER
+            print("legal-editor pass: no personal names kept")
+            return art
+        print("legal-editor output rejected (structure changed) -> name filter only")
+    except Exception as ex:
+        print("legal-editor pass failed:", str(ex)[:140])
+    art["title"] = regex_scrub(art["title"])
+    art["summary"] = regex_scrub(art.get("summary", ""))
+    art["body"] = [regex_scrub(p) for p in art["body"]]
+    return art
+
+
+def anonymize_archive(arts, limit=20):
+    """Runs once per article (guarded by ANON_VER): rewrite already-published city/crime stories so they carry no names."""
+    if not (GEMINI_KEY or GROQ_KEY or OPENROUTER_KEY):
+        return 0
+    todo = []
+    for k, v in arts.items():
+        if k == "ar_cities":
+            for a in v:
+                if a.get("anon") != ANON_VER:
+                    todo.append((k, a))
+        elif k == "ar_local":
+            for a in v:
+                if a.get("anon") != ANON_VER and needs_anon(k, a.get("title", "") + " " + a.get("summary", "")):
+                    todo.append((k, a))
+    todo.sort(key=lambda ka: ka[1].get("date", ""), reverse=True)
+    done = 0
+    for k, a in todo[:limit]:
+        art = {"title": a["title"], "summary": a.get("summary", ""),
+               "body": [p for p in a.get("content", "").split("\n\n") if p.strip()]}
+        art = anonymize_art(art, k)
+        if art.get("anon") != ANON_VER:
+            continue
+        a["title"] = art["title"]
+        a["summary"] = art["summary"]
+        a["content"] = "\n\n".join(art["body"])
+        a["image_alt"] = art["title"]
+        a["anon"] = ANON_VER
+        done += 1
+    if todo:
+        print(f"legal-editor pass on archive: {done} article(s) rewritten, {max(0, len(todo) - done)} left for the next run")
+    return done
+
+
 def heal_images(arts):
     """REGEN_IMAGES=svg: replace up to 8 placeholder SVGs per run. svgall: all placeholders. all: redraw every image once."""
-    if REGEN == "none" or not (GEMINI_KEY or GROQ_KEY or OPENROUTER_KEY or OPENAI_KEY or IMAGE_PROVIDERS):
+    if REGEN == "none":
         return
-    # placeholders + old random stock photos (picsum) are healed automatically, a few per run
+    # placeholders + old random stock photos (legacy credits) are healed automatically, a few per run
     todo = [(k, a) for k, v in arts.items() for a in v
             if REGEN == "all"
             or a["image"].endswith(".svg")
             or (a.get("image_credit") or {}).get("source") == "picsum"]
     limit = len(todo) if REGEN in ("all", "svgall") else 8
     stamp = datetime.now(timezone.utc).strftime("%y%m%d%H%M")
-    for k, a in todo[:limit]:
+    done_real = 0
+    for idx, (k, a) in enumerate(todo[:limit]):
         old = a["image"]
-        prompt = "" if REGEN == "all" else (a.get("image_prompt_editor") or "")
+        # book lists keep their neutral still-life brief; news pictures are rebuilt from the headline + first 3 paragraphs
+        if a.get("kind") == "books":
+            prompt = a.get("image_prompt_editor") or a.get("image_prompt") or ""
+        else:
+            prompt = "" if REGEN == "all" else (a.get("image_prompt_editor") or "")
         if not prompt:   # build it from the headline + the first three paragraphs (the editor's rule)
             paras = [p for p in a.get("content", "").split("\n\n") if p.strip() and not p.strip().startswith("## ")]
             prompt = (image_prompt_for_article(a["title"], paras, k, a["id"])
@@ -927,8 +1270,22 @@ def heal_images(arts):
             a["image_prompt"] = prompt
         new, credit = make_image(prompt, a["id"], k, file_stem=f"{a['id']}-{stamp}")
         if new.endswith(".svg"):
-            (ROOT / new).unlink(missing_ok=True)
+            if REGEN == "all" and done_real:
+                # explicit full redraw: an unrelated old picture must never survive. Keep the neutral placeholder (healed later).
+                a["image"] = new
+                a.pop("cdn", None)
+                a.pop("image_credit", None)
+                if old != new:
+                    (ROOT / old).unlink(missing_ok=True)
+                    (STATE["hashes"] or {}).pop(Path(old).stem, None)
+                print("image replaced with a neutral placeholder (no image provider available):", a["id"])
+            else:
+                (ROOT / new).unlink(missing_ok=True)
+                if REGEN == "all" and idx >= 2 and not done_real:
+                    print("STOP: not a single image provider produced a picture -> old images kept, nothing was wiped.")
+                    break
             continue
+        done_real += 1
         a["image"], a["regen"] = new, True
         if credit:
             a["image_credit"] = credit
@@ -1026,8 +1383,14 @@ def main():
         build_site.build()
         raise SystemExit("ERROR: no AI key found. Add GEMINI_API_KEY (https://aistudio.google.com/apikey) in GitHub: "
                          "Settings > Secrets and variables > Actions > Secrets. Optional fallbacks: GROQ_API_KEY, OPENROUTER_API_KEY.")
+    print("pipeline:", PIPELINE_VER, "| regen images:", REGEN)
     print("cloudinary:", "on" if cloudinary_cfg() else "off (set CLOUDINARY_URL or the 3 CLOUDINARY_* secrets)")
-    print("image providers:", ",".join(IMAGE_PROVIDERS), "| node:", "ok" if subprocess.run(["node", "-v"], capture_output=True).returncode == 0 else "MISSING")
+    print("image providers:", ",".join(IMAGE_PROVIDERS), "| gemini:", "on" if GEMINI_KEY else "off",
+          "| cloudflare:", "on" if (CF_ACCOUNT and CF_TOKEN) else "off (add CF_ACCOUNT_ID + CF_API_TOKEN)",
+          "| together:", "on" if TOGETHER_KEY else "off (add TOGETHER_API_KEY)",
+          "| hfspace: on (keyless, free)",
+          "| openai:", "on" if OPENAI_KEY else "off",
+          "| node:", "ok" if subprocess.run(["node", "-v"], capture_output=True).returncode == 0 else "MISSING")
     jf, sf = ROOT / "articles.json", ROOT / "news-state.json"
     data = json.loads(jf.read_text(encoding="utf-8")) if jf.exists() else {}
     arts = {k: data.get("articles", {}).get(k, []) for k in build_site.CATEGORIES}
@@ -1057,6 +1420,18 @@ def main():
     if dropped:
         print(f"archive cleaned: {dropped} articles citing a Moroccan outlet removed")
 
+    anonymize_archive(arts)
+
+    # «المكتبة الرقمية» holds nothing but book lists written from the repository: a stray article is moved back to tech
+    stray = [a for a in arts["ar_books"] if a.get("kind") != "books"]
+    for a in stray:
+        arts["ar_books"].remove(a)
+        a["cat_ok"] = True
+        arts["ar_tech"].append(a)
+        print("moved a non-book article out of the free library:", a["id"])
+    if stray:
+        arts["ar_tech"].sort(key=lambda x: x["date"], reverse=True)
+
     heal_images(arts)
 
     made, stuck, errors = 0, set(), []
@@ -1064,7 +1439,11 @@ def main():
         # neediest category first; once all have >= MIN_PER_CAT, rotate to the one with the oldest latest article
         cat = min((k for k in arts if k not in stuck),
                   key=lambda k: (len(arts[k]) >= MIN_PER_CAT, len(arts[k]), arts[k][0]["date"] if arts[k] else ""))
-        trend, tkey, city_meta, system = None, None, None, None
+        trend, tkey, city_meta, system, books_payload = None, None, None, None, None
+        # a fresh Atlas Lions / Botola headline always becomes the first article of the run (traffic + the editor's rule)
+        forced_sport = pick_morocco_sport(used) if made == 0 else None
+        if forced_sport:
+            cat = "ar_sports"
         if cat == "ar_local":
             pick = pick_trend(used)
             if not pick:
@@ -1080,23 +1459,41 @@ def main():
                 continue
             city_meta, chosen, tkey = pick
             system = CITY_SYSTEM
-        else:
-            lists = [[i for i in read_feed(n, u) if i["url"] not in used] for n, u in FEEDS.get(cat, [])]
-            lists += [[i for i in read_gn(n, u) if i["url"] not in used] for n, u in TOPIC_FEEDS.get(cat, [])]
-            pool = interleave([x for x in lists if x])
-            if not pool:
-                print("no fresh stories for", cat)
+        elif cat == "ar_books":
+            books_payload = books_library.make_payload(arts["ar_books"])
+            if not books_payload:
+                print("no fresh free-book list right now")
                 stuck.add(cat)
                 continue
-            main_item = pool[0]
-            tk = tokens(main_item["title"])
-            extra = next((i for i in pool[1:] if i["publisher"] != main_item["publisher"] and len(tk & tokens(i["title"])) >= 2), None)
-            chosen = [main_item] + ([extra] if extra else [])
+            chosen = []
+            tkey = "books:" + books_payload["topic"]
+        else:
+            if cat == "ar_sports":
+                system = SPORTS_SYSTEM
+            if forced_sport:
+                chosen = [forced_sport]
+                forced_sport = None
+            else:
+                allow = cat in build_site.MOROCCAN_OK_CATS   # local sports press is cited in the sports section
+                lists = [[i for i in read_feed(n, u, allow_moroccan=allow) if i["url"] not in used] for n, u in FEEDS.get(cat, [])]
+                lists += [[i for i in read_gn(n, u, allow_moroccan=allow) if i["url"] not in used] for n, u in TOPIC_FEEDS.get(cat, [])]
+                pool = interleave([x for x in lists if x])
+                if not pool:
+                    print("no fresh stories for", cat)
+                    stuck.add(cat)
+                    continue
+                main_item = pool[0]
+                tk = tokens(main_item["title"])
+                extra = next((i for i in pool[1:] if i["publisher"] != main_item["publisher"] and len(tk & tokens(i["title"])) >= 2), None)
+                chosen = [main_item] + ([extra] if extra else [])
         for s in chosen:
             s["text"] = page_text(s["url"])
         try:
-            art = write_article(build_site.CATEGORIES[cat], chosen, trend, system=system,
-                                city=city_meta[0] if city_meta else None)
+            if books_payload:
+                art = write_books_article(books_payload)
+            else:
+                art = write_article(build_site.CATEGORIES[cat], chosen, trend, system=system,
+                                    city=city_meta[0] if city_meta else None)
         except Exception as ex:  # providers down: do NOT burn the story, stop after 2 failures
             print("generation failed:", str(ex)[:300])
             errors.append(str(ex))
@@ -1106,16 +1503,30 @@ def main():
             used.add(tkey)
         if not art:
             print("article rejected (length / similarity), skipping story")
+            if books_payload:          # never retry the same list forever: skip the section for this run
+                stuck.add(cat)
             continue
         if curate.is_duplicate_of_any({"title": art["title"], "content": "\n\n".join(art["body"])}, arts):
             print("article rejected: it duplicates one that is already published:", art["title"][:70])
+            if books_payload:
+                stuck.add(cat)
             continue
-        aid = f"{cat}-{datetime.now(timezone.utc):%Y%m%d%H%M}-{hashlib.md5(chosen[0]['url'].encode()).hexdigest()[:6]}"
+        seed = (chosen[0]["url"] if chosen else
+                books_payload["topic"] + "|" + "|".join(b["url"] for b in books_payload["books"]))
+        aid = f"{cat}-{datetime.now(timezone.utc):%Y%m%d%H%M}-{hashlib.md5(seed.encode()).hexdigest()[:6]}"
         body = [p.strip() for p in art["body"]]
-        # image prompt is rebuilt from the headline + the first three paragraphs (the editor's rule)
-        ip = (image_prompt_for_article(art["title"], body, cat, aid)
-              or str(art.get("image_prompt", "")).strip()
-              or f"a telling scene from this news story: {art['title']}")
+        # city/crime articles: a second editing pass removes every personal name before the story is published
+        if needs_anon(cat, art["title"] + " " + art["summary"]):
+            art = anonymize_art({"title": art["title"], "summary": art["summary"], "body": body}, cat)
+            body = [p.strip() for p in art["body"]]
+        # image prompt is rebuilt from the headline + the first three paragraphs (the editor's rule);
+        # book lists use their fixed still-life brief (no people, no unrelated faces)
+        if books_payload:
+            ip = books_payload["visual_prompt"]
+        else:
+            ip = (image_prompt_for_article(art["title"], body, cat, aid)
+                  or str(art.get("image_prompt", "")).strip()
+                  or f"a telling scene from this news story: {art['title']}")
         mi = make_image(ip, aid, cat)
         entry = {
             "id": aid, "title": art["title"].strip(), "summary": art["summary"].strip(),
@@ -1125,6 +1536,15 @@ def main():
             "image_prompt": ip, "image_prompt_editor": ip, "cat_ok": True,
             "date": datetime.now(timezone.utc).isoformat(timespec="minutes"),
             "sources": [{"publisher": s["publisher"], "url": s["url"]} for s in chosen]}
+        if books_payload:
+            entry["kind"] = "books"
+            entry["book_topic"] = books_payload["topic"]
+            entry["books"] = [{"title": b["title"], "url": b["url"], "author": b["author"],
+                               "fmt": b["fmt"], "lang": b["lang"]} for b in books_payload["books"]]
+            entry["sources"] = [{"publisher": "EbookFoundation/free-programming-books",
+                                 "url": books_payload["repo_url"]},
+                                {"publisher": "رخصة قائمة الكتب: CC BY 4.0",
+                                 "url": books_payload["license_url"]}]
         if city_meta:
             entry.update({"city": city_meta[0], "city_slug": city_meta[1], "city_region": city_meta[2]})
         arts[cat].insert(0, entry)
