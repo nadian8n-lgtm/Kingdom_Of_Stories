@@ -2,16 +2,16 @@ name: Nexus Press Auto Publisher
 
 on:
   schedule:
-    - cron: '0 * * * *'   # كل ساعة
+    - cron: '0 */2 * * *'   # كل ساعتين (الدورة الواحدة قد تستغرق أكثر من ساعة)
   workflow_dispatch:
     inputs:
       count:
-        description: 'عدد المقالات في هذه الدورة (اكتب 36 لأول تشغيل)'
+        description: 'عدد المقالات في هذه الدورة (ابدأ بـ 8 مع regen_images = none، ثم كرّر 8+8+8 لملء الأقسام)'
         default: '6'
       regen_images:
         description: 'الصور: none = لا شيء / fill = إصلاح الصور الناقصة فقط / all = إعادة رسم كل الصور'
         type: choice
-        default: fill
+        default: none
         options: [none, fill, all]
 
 permissions:
@@ -24,7 +24,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (github.event.inputs.regen_images == 'all' || github.event.inputs.regen_images == 'svgall') && 340 || 60 }}
+    timeout-minutes: 350   # الحد الأقصى الآمن (سقف GitHub 360): الكود يتوقف بنفسه عند RUN_BUDGET_MIN ثم يبني ويرفع
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -68,7 +68,10 @@ jobs:
           MAX_PER_RUN: ${{ github.event.inputs.count || '6' }}
           MIN_PER_CATEGORY: ${{ vars.MIN_PER_CATEGORY || '15' }}
           KEEP_PER_CATEGORY: ${{ vars.KEEP_PER_CATEGORY || '30' }}
-          REGEN_IMAGES: ${{ github.event.inputs.regen_images || 'fill' }}
+          # التشغيل التلقائي بلا صور (none) لأن البناء يرسم أي صورة ناقصة تلقائياً؛ اختر fill يدوياً عند الحاجة
+          REGEN_IMAGES: ${{ github.event.inputs.regen_images || 'none' }}
+          # بعد هذه المدة يتوقف التوليد ويُبنى الموقع ويُرفع ما جُهّز — فلا تُلغى دورة كاملة أبداً
+          RUN_BUDGET_MIN: ${{ vars.RUN_BUDGET_MIN || '150' }}
           ADSENSE_CLIENT: ${{ vars.ADSENSE_CLIENT }}
           ADSENSE_SLOT: ${{ vars.ADSENSE_SLOT }}
           NEWSLETTER_BUTTONDOWN: ${{ vars.NEWSLETTER_BUTTONDOWN }}
