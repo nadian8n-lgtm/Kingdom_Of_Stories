@@ -9,10 +9,10 @@ on:
         description: 'عدد المقالات في هذه الدورة (اكتب 36 لأول تشغيل)'
         default: '6'
       regen_images:
-        description: 'الصور: none = لا شيء / svg = استبدال 8 صور بديلة / svgall = استبدال كل الصور البديلة / all = إعادة رسم كل الصور'
+        description: 'الصور: none = لا شيء / fill = إصلاح الصور الناقصة فقط / all = إعادة رسم كل الصور'
         type: choice
-        default: svg
-        options: [none, svg, svgall, all]
+        default: fill
+        options: [none, fill, all]
 
 permissions:
   contents: write
@@ -44,10 +44,6 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          # مفتاح Pollinations (يكفي أن يكون اسم السر واحداً من هذه الثلاثة)
-          POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
-          POLLINATIONS_KEY: ${{ secrets.POLLINATIONS_KEY }}
-          POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
           # Cloudinary: إما CLOUDINARY_URL وحده، أو الأسرار الثلاثة CLOUD_NAME + API_KEY + API_SECRET
           CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
           CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME || vars.CLOUDINARY_CLOUD_NAME }}
@@ -58,13 +54,21 @@ jobs:
           GEMINI_IMAGE_MODEL: ${{ vars.GEMINI_IMAGE_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_IMAGE_MODEL: ${{ vars.OPENAI_IMAGE_MODEL }}
-          IMAGE_PROVIDERS: ${{ vars.IMAGE_PROVIDERS || 'pollinations,gemini,openai,genai' }}
-          POLLINATIONS_MODEL: ${{ vars.POLLINATIONS_MODEL || 'flux' }}
+          # مولّدات صور مجانية (بلا بطاقة بنكية): Cloudflare Workers AI (Flux) ثم Together AI
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_IMAGE_MODEL: ${{ vars.CF_IMAGE_MODEL }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          TOGETHER_IMAGE_MODEL: ${{ vars.TOGETHER_IMAGE_MODEL }}
+          # مساحة Hugging Face المجانية (FLUX) تعمل بلا أي مفتاح — احتياطي أخير قبل الصور البديلة
+          HF_IMAGE_SPACE: ${{ vars.HF_IMAGE_SPACE }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          IMAGE_PROVIDERS: 'gemini,cloudflare,together,hfspace,genai,openai'
           GENAI_IMAGE_MODEL: ${{ vars.GENAI_IMAGE_MODEL }}
           MAX_PER_RUN: ${{ github.event.inputs.count || '6' }}
-          MIN_PER_CATEGORY: ${{ vars.MIN_PER_CATEGORY || '6' }}
+          MIN_PER_CATEGORY: ${{ vars.MIN_PER_CATEGORY || '15' }}
           KEEP_PER_CATEGORY: ${{ vars.KEEP_PER_CATEGORY || '30' }}
-          REGEN_IMAGES: ${{ github.event.inputs.regen_images || 'svg' }}
+          REGEN_IMAGES: ${{ github.event.inputs.regen_images || 'fill' }}
           ADSENSE_CLIENT: ${{ vars.ADSENSE_CLIENT }}
           ADSENSE_SLOT: ${{ vars.ADSENSE_SLOT }}
           NEWSLETTER_BUTTONDOWN: ${{ vars.NEWSLETTER_BUTTONDOWN }}
@@ -72,6 +76,10 @@ jobs:
         run: python fetch_news.py
       - name: Check site (links, images, core files)
         run: python check_site.py
+      - name: AdSense pre-review audit (duplicates, blurry images, wrong sections)
+        env:
+          ADSENSE_MIN_PER_CATEGORY: ${{ vars.ADSENSE_MIN_PER_CATEGORY || '0' }}
+        run: python adsense_audit.py
       - name: Commit and push (conflict-proof)
         run: |
           git config user.name "NexusPress-Bot"
