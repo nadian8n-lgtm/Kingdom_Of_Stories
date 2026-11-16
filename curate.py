@@ -124,7 +124,6 @@ def heuristic(a, current):
     """
     title, body = a["title"], a.get("summary", "") + " " + a.get("content", "")[:700]
     score = {c: 3 * _score(title, w) + _score(body, w) for c, w in HINTS.items()}
-    cur = score.get(current, 0)
     sports, world = score["ar_sports"], score["ar_world"]
     crime = 2 * _score(title, CRIME_HINTS) + _score(body, CRIME_HINTS)
     city = 3 * _score(title, CITY_NAMES) + _score(body, CITY_NAMES)
