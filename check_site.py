@@ -19,15 +19,26 @@ for need in ("style.css", "site.js", "tools.js", "sw.js", "logo.webp", "manifest
 
 pages = [p for p in list(ROOT.glob("*.html")) + list((ROOT / "articles").glob("*.html"))
          if not p.name.startswith("google") and p.name != "404.html"]
+# Map each article id to its current category in articles.json (since curate.run can move articles across sections without renaming id)
+id_to_cat = {}
+try:
+    for _cat, _items in build_site.load().items():
+        for _a in _items:
+            if _a.get("id"):
+                id_to_cat[_a["id"]] = _cat
+except Exception:
+    pass
 images = {}
 for page in pages:
     text = page.read_text(encoding="utf-8")
+    src_section = text.split('class="sources"', 1)[1].split('</div>', 1)[0] if 'class="sources"' in text else ""
+    for val in re.findall(r'href="(https?://[^"]+)"', src_section):
+        if page.parent.name == "articles":
+            cat = id_to_cat.get(page.stem) or page.name.split("-")[0]
+            if build_site.is_moroccan(val) and cat not in build_site.MOROCCAN_OK_CATS:
+                problems.append(f"{page.name}: Moroccan source link {val}")
     for val in re.findall(r'(?:href|src)="([^"]+)"', text):
         if val.startswith(SKIP_PREFIX):
-            if val.startswith("http") and page.parent.name == "articles" and "rel=\"nofollow" in text:
-                cat = page.name.split("-")[0]          # ids look like ar_cities-2026...
-                if build_site.is_moroccan(val) and cat not in build_site.MOROCCAN_OK_CATS:
-                    problems.append(f"{page.name}: Moroccan source link {val}")
             continue
         target = (page.parent / unquote(urlparse(val).path)).resolve()
         if not target.exists():
@@ -39,7 +50,7 @@ for page in pages:
         if needle not in text:
             problems.append(f"{page.relative_to(ROOT)} lacks {needle}")
     if page.parent.name == "articles":
-        m = re.search(r'<img class="hero"[^>]*src="\.\./([^"]+)"', text)
+        m = re.search(r'<img class="hero"[^>]*src="\.\./([^"?]+)', text)
         if m:
             images.setdefault(m.group(1), []).append(page.name)
 
