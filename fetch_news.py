@@ -68,7 +68,7 @@ CF_TOKEN = (os.getenv("CF_API_TOKEN") or os.getenv("CLOUDFLARE_API_TOKEN") or ""
 TOGETHER_KEY = os.getenv("TOGETHER_API_KEY", "").strip()   # free FLUX.1-schnell-Free tier
 # Gemini image generation first, then the two FREE Flux providers, then the optional SDK / paid ChatGPT images.
 # Every picture is generated for THIS story only; there are no stock-photo or random-picture providers any more.
-PIPELINE_VER = "2026-11-16c"   # printed at the start of every run, so the Actions log proves which code is running
+PIPELINE_VER = "2026-11-16d"   # printed at the start of every run, so the Actions log proves which code is running
 KNOWN_IMAGE_PROVIDERS = ("gemini", "cloudflare", "together", "hfspace", "genai", "openai")
 IMAGE_PROVIDERS = [p.strip() for p in (os.getenv("IMAGE_PROVIDERS") or ",".join(KNOWN_IMAGE_PROVIDERS)).split(",") if p.strip()]
 # only the providers implemented below can ever run, even if an old workflow still lists a retired one
@@ -964,17 +964,15 @@ def image_prompt_for_article(title, paragraphs, cat, art_id):
 
 
 def sharpness(img):
-    """Edge-detail score used to reject blurry or upscaled images."""
+    """Edge-detail score used to reject blurry or upscaled images (matches adsense_audit.py)."""
     try:
         from PIL import ImageFilter, ImageStat
-        g = img.convert("L")
-        g.thumbnail((640, 640))
-        return ImageStat.Stat(g.filter(ImageFilter.FIND_EDGES)).var[0]
+        return ImageStat.Stat(img.convert("L").filter(ImageFilter.FIND_EDGES)).var[0]
     except Exception:
         return 999
 
 
-SHARP_MIN = 30          # below this the picture is nearly blank / heavily upscaled -> regenerate (dark night shots stay above it)
+SHARP_MIN = 80          # must match adsense_audit.py so a generated image is never later rejected as blurry (dark night shots stay above or retry)
 MIN_W, MIN_H = 900, 500
 
 
@@ -1160,18 +1158,59 @@ def fallback_svg(stem, cat):
 def fallback_illustration(stem, cat, title=""):
     """Original, sharp, text-free illustration drawn locally when no image provider answers.
     It replaces the old emoji SVG: no flag, no emoji, no blue 'MA' box, no copyright risk."""
+    out = ROOT / "images"
+    out.mkdir(exist_ok=True)
+    path = out / f"{stem}.webp"
     try:
         import illustrations
-        out = ROOT / "images"
-        out.mkdir(exist_ok=True)
-        path = out / f"{stem}.webp"
         illustrations.save(stem, cat, title, path)
         (out / f"{stem}.svg").unlink(missing_ok=True)
         return f"images/{path.name}", {"source": "Nexus Press", "author": "Nexus Press",
                                        "license": "original editorial illustration", "kind": "illustration"}
     except Exception as ex:
         print("illustration fallback failed:", str(ex)[:160])
-        svg = ROOT / "images" / f"{stem}.svg"
+        try:
+            from PIL import Image, ImageDraw
+            r = random.Random(stem)
+            palettes = {
+                "ar_local": ((11, 60, 122), (3, 105, 161), (125, 211, 252)),
+                "ar_cities": ((154, 52, 18), (124, 45, 18), (253, 186, 116)),
+                "ar_world": ((3, 105, 161), (7, 89, 133), (186, 230, 253)),
+                "ar_economy": ((4, 120, 87), (6, 95, 70), (167, 243, 208)),
+                "ar_tech": ((109, 40, 217), (76, 29, 149), (221, 214, 254)),
+                "ar_sports": ((180, 83, 9), (120, 53, 15), (253, 230, 138)),
+                "ar_arts": ((190, 24, 93), (131, 24, 67), (251, 207, 232)),
+                "ar_books": ((30, 64, 175), (30, 58, 138), (191, 219, 254)),
+            }
+            c1, c2, c3 = palettes.get(cat, ((15, 23, 42), (30, 58, 138), (148, 163, 184)))
+            im = Image.new("RGB", (1280, 720), c1)
+            dr = ImageDraw.Draw(im)
+            for y in range(720):
+                t = y / 719
+                col = tuple(int(c1[i] * (1 - t) + c2[i] * t) for i in range(3))
+                dr.line([(0, y), (1280, y)], fill=col)
+            for _ in range(36):
+                x0, y0 = r.randint(20, 1100), r.randint(20, 560)
+                w, h = r.randint(80, 340), r.randint(80, 300)
+                col = c3 if r.random() > 0.35 else (255, 255, 255)
+                if r.random() > 0.5:
+                    dr.ellipse([x0, y0, x0 + w, y0 + w], outline=col, width=r.randint(4, 10))
+                else:
+                    dr.rectangle([x0, y0, x0 + w, y0 + h], outline=col, width=r.randint(4, 9))
+            for _ in range(28):
+                x1, y1 = r.randint(0, 1280), r.randint(0, 720)
+                x2, y2 = x1 + r.randint(-380, 380), y1 + r.randint(-280, 280)
+                dr.line([(x1, y1), (x2, y2)], fill=c3 if r.random() > 0.3 else (255, 255, 255), width=r.randint(3, 7))
+            for _ in range(24):
+                cx, cy, rad = r.randint(40, 1240), r.randint(40, 680), r.randint(12, 48)
+                dr.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], fill=c3 if r.random() > 0.4 else c1, outline=(255, 255, 255), width=2)
+            im.save(path, "WEBP", quality=90, method=6)
+            (out / f"{stem}.svg").unlink(missing_ok=True)
+            return f"images/{path.name}", {"source": "Nexus Press", "author": "Nexus Press",
+                                           "license": "original editorial illustration", "kind": "illustration"}
+        except Exception as ex2:
+            print("pillow fallback failed:", str(ex2)[:120])
+        svg = out / f"{stem}.svg"
         svg.write_text(fallback_svg(stem, cat), encoding="utf-8")
         return f"images/{svg.name}", None
 
@@ -1258,6 +1297,7 @@ def make_image(prompt, art_id, cat, file_stem=None, title=""):
                 STATE["hashes"][stem] = chosen_h
                 return f"images/{path.name}", {"source": "AI", "author": "Nexus Press",
                                                "license": "image generated for Nexus Press", "kind": "ai"}
+    # Keep generated fallback compatible with adsense_audit (> 8 KB, sharp >= 80, .webp, credited)
     return fallback_illustration(stem, cat, title)
 
 
@@ -1515,7 +1555,10 @@ def main():
     used = set(json.loads(sf.read_text(encoding="utf-8")).get("used", [])) if sf.exists() else set()
 
     # remove duplicated stories and put every article in its right section (once per article)
-    removed, moved = curate.run(arts, build_site.CATEGORIES, llm=generate_text if (GEMINI_KEY or GROQ_KEY or OPENROUTER_KEY) else None)
+    if not budget_exceeded():
+        removed, moved = curate.run(arts, build_site.CATEGORIES, llm=generate_text if (GEMINI_KEY or GROQ_KEY or OPENROUTER_KEY) else None)
+    else:
+        removed, moved = curate.run(arts, build_site.CATEGORIES, llm=None)
     for a in removed:
         (ROOT / a["image"]).unlink(missing_ok=True)
         print("duplicate article removed:", a["title"][:70])
@@ -1531,7 +1574,7 @@ def main():
             if any(build_site.is_moroccan(s.get("url", ""), s.get("publisher", "")) for s in a.get("sources", [])):
                 (ROOT / a["image"]).unlink(missing_ok=True)
                 dropped += 1
-                print("article removed (Moroccan source outside city news):", a["id"])
+                print("article removed (Moroccan source outside allowed section):", a["id"])
             else:
                 keep.append(a)
         arts[k] = keep
