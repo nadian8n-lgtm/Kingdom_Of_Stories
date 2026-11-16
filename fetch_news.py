@@ -16,7 +16,7 @@ allowed ONLY in this section.
 TEXT providers (tried in this order, only those with a key): Gemini -> Groq -> OpenRouter
 IMAGE providers (IMAGE_PROVIDERS, default "gemini,cloudflare,together,hfspace,genai,openai"): Gemini first, then the
 FREE Flux providers (Cloudflare Workers AI, Together AI free FLUX.1-schnell-Free, and the keyless Hugging Face FLUX
-Space), then the optional Gen AI SDK and the paid ChatGPT images. Pollinations and random stock photos were removed:
+Space), then the optional Gen AI SDK and the paid ChatGPT images. Random stock-photo services were removed:
 they returned generic or unrelated pictures (often people who had nothing to do with the story). If no provider works,
 a local SVG placeholder is used and replaced on a later run.
 
@@ -66,7 +66,7 @@ CF_TOKEN = (os.getenv("CF_API_TOKEN") or os.getenv("CLOUDFLARE_API_TOKEN") or ""
 TOGETHER_KEY = os.getenv("TOGETHER_API_KEY", "").strip()   # free FLUX.1-schnell-Free tier
 # Gemini image generation first, then the two FREE Flux providers, then the optional SDK / paid ChatGPT images.
 # Every picture is generated for THIS story only; there are no stock-photo or random-picture providers any more.
-PIPELINE_VER = "2026-11-15b"   # printed at the start of every run, so the Actions log proves which code is running
+PIPELINE_VER = "2026-11-16a"   # printed at the start of every run, so the Actions log proves which code is running
 KNOWN_IMAGE_PROVIDERS = ("gemini", "cloudflare", "together", "hfspace", "genai", "openai")
 IMAGE_PROVIDERS = [p.strip() for p in (os.getenv("IMAGE_PROVIDERS") or ",".join(KNOWN_IMAGE_PROVIDERS)).split(",") if p.strip()]
 # only the providers implemented below can ever run, even if an old workflow still lists a retired one
@@ -173,8 +173,10 @@ TOPIC_FEEDS = {
 TRENDS_URL = "https://trends.google.com/trending/rss?geo=MA"   # what Morocco is searching for right now
 BLOCK_TOPICS = ("porn", "sex", "xxx", "onlyfans", "nude", "سكس", "نيك", "اباح", "إباح", "عاري", "فضيحة جنس")
 
-ICONS = {"ar_local": "🇲🇦", "ar_cities": "🏙️", "ar_world": "🌍", "ar_economy": "💹", "ar_tech": "💻",
-         "ar_sports": "⚽", "ar_arts": "🎭"}
+# The old code built a placeholder SVG from this emoji map.  The Moroccan flag emoji (🇲🇦) was
+# rendered as a giant blue "MA" box on Windows: that is exactly the defect the editor saw.
+# The map is removed for good; when no image provider answers, illustrations.py draws a real
+# text-free picture instead (see make_image / fallback_illustration below).
 COLORS = {"ar_local": "#0b3c7a", "ar_cities": "#9a3412", "ar_world": "#0369a1", "ar_economy": "#047857",
           "ar_tech": "#6d28d9", "ar_sports": "#b45309", "ar_arts": "#be185d"}
 
@@ -204,6 +206,16 @@ SYSTEM = """أنت صحفي عربي محترف بخبرة طويلة في غر�
 - image_prompt: وصف إنجليزي مفصّل (40 إلى 70 كلمة) لمشهد فوتوغرافي تحريري يعبّر مباشرة عن حدث المقال نفسه، بعناصر بصرية ملموسة وخاصة بهذا الخبر
   (المكان، الأشياء، الأجواء، الإضاءة، زاوية التصوير)، وليس مشهداً عاماً يصلح لأي خبر. بدون نصوص أو حروف أو شعارات أو علامات تجارية،
   وبدون وجوه أشخاص حقيقيين أو شخصيات عامة (استعمل أشخاصاً مجهولين من الخلف أو من بعيد أو أيدٍ وأدوات ومعالم)."""
+
+# قسم «أخبار المغرب»: الخبر مغربي بالكامل، لا أخبار دولية ولا رياضة ولا حوادث مدن.
+LOCAL_SYSTEM = SYSTEM + """
+## قاعدة قسم «أخبار المغرب»
+- الموضوع مغربي بالكامل: مؤسسة مغربية أو مدينة مغربية أو مجتمع مغربي أو سياسة عمومية تخص المغرب.
+- ممنوع أن يكون الخبر حدثاً خارج المغرب، حتى لو نشرته صحيفة مغربية. إن كان الخبر دولياً فهو للأخبار الدولية.
+- إن كان الخبر مباراة أو منتخباً أو لاعباً فهو للقسم الرياضي، وإن كان جريمة أو حادثة أو قضية في مدينة
+  فهو لقسم «أخبار المدن». اكتب هنا فقط الشأن المغربي العام: الحكومة والبرلمان والقانون والتعليم والصحة
+  والاقتصاد والفلاحة والماء والطقس والنقل والطاقة والثقافة والمجتمع.
+- لا تذكر اسم أي شخص في سياق اتهام أو تحقيق، وانسب كل معلومة إلى جهة رسمية أو إلى الصحيفة المصدر."""
 
 CITY_SYSTEM = """أنت محقق صحفي مغربي مخضرم في قسم الحوادث والقضايا، تكتب لصحيفة إلكترونية عربية كبرى.
 أسلوبك: سرد أدبي مشدود، بلاغة بلا مبالغة، تفاصيل حسّية دقيقة، وإيقاع يدفع القارئ إلى آخر سطر، مع التزام صارم بأخلاقيات المهنة.
@@ -480,7 +492,7 @@ def compat_text(name, system, user):
             print(f"{name} model '{model}' unusable -> trying next ({str(ex)[:120]})")
             last = ex if isinstance(ex, ApiError) else ApiError(0, str(ex), name)
     raise last
-
+    
 
 def generate_text(system, user):
     providers = []
@@ -517,14 +529,15 @@ def child(el, *names):
 
 def read_feed(name, url, allow_moroccan=False):
     """RSS or Atom -> list of stories. Cached per run. Moroccan outlets are dropped unless allow_moroccan."""
-    if url in STATE["feeds"]:
-        return STATE["feeds"][url]
+    key = url + ("|ma" if allow_moroccan else "")
+    if key in STATE["feeds"]:
+        return STATE["feeds"][key]
     out = []
     try:
         root = ET.fromstring(request(url, timeout=30))
     except Exception as ex:
         print("feed failed", name, str(ex)[:100])
-        STATE["feeds"][url] = out
+        STATE["feeds"][key] = out
         return out
     for it in root.iter():
         if local(it.tag) not in ("item", "entry"):
@@ -541,7 +554,7 @@ def read_feed(name, url, allow_moroccan=False):
         desc = re.sub(r"<[^>]+>", " ", (d.text or "") if d is not None else "")
         out.append({"publisher": name, "title": title, "url": link, "desc": re.sub(r"\s+", " ", desc).strip()})
     print(f"feed ok: {name} ({len(out)})" if out else f"feed empty: {name}")
-    STATE["feeds"][url] = out
+    STATE["feeds"][key] = out
     return out
 
 
@@ -549,7 +562,7 @@ def read_gn(label, url, allow_moroccan=False):
     """Google News RSS -> stories with the real publisher name (its <source> element).
     Google News links are discovery links; page_text() usually cannot read them, so the article is
     written from the headline + snippet (or from the national feed when allow_moroccan is used)."""
-    key = "gn:" + url
+    key = "gn:" + url + ("|ma" if allow_moroccan else "")
     if key in STATE["feeds"]:
         return STATE["feeds"][key]
     out = []
@@ -697,6 +710,51 @@ def pick_morocco_sport(used):
             if any(w in t for w in MOROCCO_SPORT_WORDS) and any(w in t for w in SPORT_MATCH_WORDS):
                 return it
     return None
+
+
+# --- «أخبار المغرب»: genuine Moroccan news from the national press, never a foreign event ---
+MOROCCO_LOCAL_HINTS = (
+    "المغرب", "المغربي", "المغاربة", "المملكة", "الرباط", "الدار البيضاء", "مراكش", "فاس", "طنجة", "أكادير",
+    "مكناس", "وجدة", "تطوان", "القنيطرة", "سلا", "آسفي", "الجديدة", "بني ملال", "خريبكة", "الناظور", "الحسيمة",
+    "العيون", "الداخلة", "ورزازات", "الصويرة", "سطات", "برشيد", "المحمدية", "الرشيدية", "شفشاون", "العرائش",
+    "بنجرير", "تيزنيت", "كلميم", "تازة", "أزرو", "إفران", "جرسيف", "تاوريرت", "سيدي قاسم", "سيدي سليمان",
+    "خنيفرة", "أزيلال", "تنغير", "ميدلت", "فكيك", "جرادة", "بوعرفة", "السمارة", "طانطان", "بوجدور",
+    "الحكومة", "البرلمان", "المجلس", "الوزير", "الوزارة", "رئاسة الحكومة", "الأمازيغية", "الدرهم", "المغاربة العالم",
+)
+MOROCCO_LOCAL_PRIORITY = (
+    "الحكومة", "البرلمان", "قانون", "مجلس", "وزير", "تعليم", "مدرسة", "جامعة", "صحة", "مستشفى", "دواء",
+    "أسعار", "تضخم", "درهم", "اقتصاد", "استثمار", "تشغيل", "بطالة", "سكن", "فلاحة", "جفاف", "ماء", "طقس",
+    "أمطار", "حرارة", "نقل", "قطار", "مطار", "طاقة", "شمسية", "هيدروجين", "بيئة", "ثقافة", "مهرجان",
+    "أمازيغية", "أسرة", "نساء", "أطفال", "رقمنة", "اتصالات",
+)
+MOROCCO_LOCAL_SKIP = SPORT_MATCH_WORDS + CRIME_WORDS
+
+
+def pick_morocco_local(used, arts=None):
+    """A fresh, genuinely Moroccan story (government, society, economy, health, weather…).
+    Sports and city crime are excluded because they have their own sections.  Never invents a story:
+    it only chooses a headline the national press actually published."""
+    pool, seen = [], set()
+    for name, url in cities.NATIONAL_FEEDS:
+        for it in read_feed(name, url, allow_moroccan=True):
+            if it["url"] in used or it["url"] in seen:
+                continue
+            blob = (it["title"] + " " + it.get("desc", "")).lower()
+            if not any(w in blob for w in MOROCCO_LOCAL_HINTS):
+                continue
+            if any(w in it["title"] for w in MOROCCO_LOCAL_SKIP):
+                continue
+            if arts and any(len(tokens(it["title"]) & tokens(a["title"])) >= 4 for a in arts.get("ar_local", [])[:12]):
+                continue
+            seen.add(it["url"])
+            pool.append(it)
+    if not pool:
+        return None
+    pool.sort(key=lambda it: (-sum(2 for w in MOROCCO_LOCAL_PRIORITY if w in it["title"]), len(it["title"])))
+    main = pool[0]
+    tk = tokens(main["title"])
+    extra = next((i for i in pool[1:] if i["publisher"] != main["publisher"] and len(tk & tokens(i["title"])) >= 2), None)
+    return None, [main] + ([extra] if extra else []), "local:" + main["url"]
 
 
 def page_text(url):
@@ -944,7 +1002,7 @@ def image_openai(prompt, seed):
         payload["quality"] = os.getenv("OPENAI_IMAGE_QUALITY", "").strip() or "medium"
     res = call_json("https://api.openai.com/v1/images/generations", payload, {"Authorization": f"Bearer {OPENAI_KEY}"}, "openai", tries=2)
     item = (res.get("data") or [{}])[0]
-    if item.get("b64_json"):
+        if item.get("b64_json"):
         return base64.b64decode(item["b64_json"]), False
     if item.get("url"):
         return request(item["url"], timeout=120), False
@@ -1069,7 +1127,26 @@ def fallback_svg(stem, cat):
             f'<rect width="1000" height="560" fill="url(#g)"/>{shapes}</svg>')
 
 
-def make_image(prompt, art_id, cat, file_stem=None):
+def fallback_illustration(stem, cat, title=""):
+    """Original, sharp, text-free illustration drawn locally when no image provider answers.
+    It replaces the old emoji SVG: no flag, no emoji, no blue 'MA' box, no copyright risk."""
+    try:
+        import illustrations
+        out = ROOT / "images"
+        out.mkdir(exist_ok=True)
+        path = out / f"{stem}.webp"
+        illustrations.save(stem, cat, title, path)
+        (out / f"{stem}.svg").unlink(missing_ok=True)
+        return f"images/{path.name}", {"source": "Nexus Press", "author": "Nexus Press",
+                                       "license": "original editorial illustration", "kind": "illustration"}
+    except Exception as ex:
+        print("illustration fallback failed:", str(ex)[:160])
+        svg = ROOT / "images" / f"{stem}.svg"
+        svg.write_text(fallback_svg(stem, cat), encoding="utf-8")
+        return f"images/{svg.name}", None
+
+
+def make_image(prompt, art_id, cat, file_stem=None, title=""):
     """Returns (relative image path, credit dict or None). No stock photos: every picture is generated for THIS story."""
     out = ROOT / "images"
     out.mkdir(exist_ok=True)
@@ -1078,7 +1155,7 @@ def make_image(prompt, art_id, cat, file_stem=None):
         from PIL import Image
     except ImportError:
         Image = None
-        print("Pillow missing -> using fallback image")
+        print("Pillow missing -> using a locally drawn illustration")
     if Image:
         known_hashes()
         for prov in IMAGE_PROVIDERS:
@@ -1140,12 +1217,12 @@ def make_image(prompt, art_id, cat, file_stem=None):
             if chosen is not None:
                 chosen.thumbnail((1280, 1280))   # keep the full 1280px wide illustration, less compression = sharper
                 path = out / f"{stem}.webp"
-                chosen.save(path, "WEBP", quality=86, method=6)
+                chosen.save(path, "WEBP", quality=88, method=6)
+                (out / f"{stem}.svg").unlink(missing_ok=True)
                 STATE["hashes"][stem] = chosen_h
-                return f"images/{path.name}", None
-    svg = out / f"{stem}.svg"
-    svg.write_text(fallback_svg(stem, cat), encoding="utf-8")
-    return f"images/{svg.name}", None
+                return f"images/{path.name}", {"source": "AI", "author": "Nexus Press",
+                                               "license": "image generated for Nexus Press", "kind": "ai"}
+    return fallback_illustration(stem, cat, title)
 
 
 def image_prompt_for(art):
@@ -1225,7 +1302,7 @@ def anonymize_archive(arts, limit=20):
                 if a.get("anon") != ANON_VER and needs_anon(k, a.get("title", "") + " " + a.get("summary", "")):
                     todo.append((k, a))
     todo.sort(key=lambda ka: ka[1].get("date", ""), reverse=True)
-    done = 0
+        done = 0
     for k, a in todo[:limit]:
         art = {"title": a["title"], "summary": a.get("summary", ""),
                "body": [p for p in a.get("content", "").split("\n\n") if p.strip()]}
@@ -1247,11 +1324,11 @@ def heal_images(arts):
     """REGEN_IMAGES=svg: replace up to 8 placeholder SVGs per run. svgall: all placeholders. all: redraw every image once."""
     if REGEN == "none":
         return
-    # placeholders + old random stock photos (legacy credits) are healed automatically, a few per run
+    # old SVG placeholders and legacy stock-photo credits are healed automatically, a few per run
     todo = [(k, a) for k, v in arts.items() for a in v
             if REGEN == "all"
             or a["image"].endswith(".svg")
-            or (a.get("image_credit") or {}).get("source") == "picsum"]
+            or (a.get("image_credit") or {}).get("kind") in (None, "stock")]
     limit = len(todo) if REGEN in ("all", "svgall") else 8
     stamp = datetime.now(timezone.utc).strftime("%y%m%d%H%M")
     done_real = 0
@@ -1268,7 +1345,7 @@ def heal_images(arts):
                       or a.get("image_prompt") or a["title"])
             a["image_prompt_editor"] = prompt
             a["image_prompt"] = prompt
-        new, credit = make_image(prompt, a["id"], k, file_stem=f"{a['id']}-{stamp}")
+        new, credit = make_image(prompt, a["id"], k, file_stem=f"{a['id']}-{stamp}", title=a.get("title", ""))
         if new.endswith(".svg"):
             if REGEN == "all" and done_real:
                 # explicit full redraw: an unrelated old picture must never survive. Keep the neutral placeholder (healed later).
@@ -1445,12 +1522,14 @@ def main():
         if forced_sport:
             cat = "ar_sports"
         if cat == "ar_local":
-            pick = pick_trend(used)
+            # genuine Moroccan news only: a foreign event must never land in «أخبار المغرب» again
+            pick = pick_morocco_local(used, arts)
             if not pick:
-                print("no usable Moroccan trend right now")
+                print("no usable Moroccan story right now")
                 stuck.add(cat)
                 continue
             trend, chosen, tkey = pick
+            system = LOCAL_SYSTEM
         elif cat == "ar_cities":
             pick = pick_city_story(used, arts)
             if not pick:
@@ -1527,7 +1606,7 @@ def main():
             ip = (image_prompt_for_article(art["title"], body, cat, aid)
                   or str(art.get("image_prompt", "")).strip()
                   or f"a telling scene from this news story: {art['title']}")
-        mi = make_image(ip, aid, cat)
+        mi = make_image(ip, aid, cat, title=art["title"])
         entry = {
             "id": aid, "title": art["title"].strip(), "summary": art["summary"].strip(),
             "content": "\n\n".join(body),
