@@ -39,9 +39,10 @@ CATEGORIES = {
     "ar_books": "المكتبة الرقمية المجانية",
 }
 # Moroccan outlets are not used as sources in the international sections (Morocco is covered through Google Trends).
-# Exceptions: «أخبار المدن» is local crime/security news that only the national press reports, and «رياضة» covers the
-# national team and the Botola, which the local sports press reports first; sources are always cited under the article.
-MOROCCAN_OK_CATS = {"ar_cities", "ar_sports"}
+# Exceptions: «أخبار المغرب» is Morocco news by definition, «أخبار المدن» is local crime/security news that only the
+# national press reports, and «رياضة» covers the national team and the Botola, which the local sports press reports
+# first; sources are always cited under the article.
+MOROCCAN_OK_CATS = {"ar_local", "ar_cities", "ar_sports"}
 MOROCCAN_HOSTS = ("hespress", "le360", "hibapress", "alyaoum24", "medias24", "2m.ma", "snrt", "map.ma", "mapexpress",
                   "barlamane", "goud.ma", "chouftv", "yabiladi", "lakome", "akhbarona", "assahifa", "almaghribtoday",
                   "h24info", "lematin", "leconomiste", "telquel", "aujourdhui.ma", "bladi", "febrayer", "anfaspress",
@@ -199,6 +200,45 @@ def clean_thumbs(data):
             t.unlink()
 
 
+def ensure_images(data):
+    """Self-healing build step: an article must never point at a missing or SVG picture.
+    If the file is absent (e.g. it was never generated or never pushed), we draw a real original
+    WebP illustration on the spot and write the repaired path + credit back to articles.json.
+    This is what turns the old red 'check_site.py: missing ...svg' failure into a green build."""
+    changed, repaired = False, 0
+    for k, items in data.items():
+        for a in items:
+            rel = a.get("image", "")
+            p = ROOT / rel if rel else None
+            broken = (not rel) or (p is None) or (not p.is_file()) or p.suffix.lower() == ".svg"
+            if not broken:
+                try:
+                    broken = p.stat().st_size < 4096
+                except OSError:
+                    broken = True
+            if not broken:
+                continue
+            stem = f"{a.get('id', 'article')}-ill"
+            out = ROOT / "images" / f"{stem}.webp"
+            try:
+                import illustrations
+                illustrations.save(stem, k, a.get("title", ""), out)
+            except Exception as ex:
+                print(f"cannot draw a replacement picture for {a.get('id')}: {str(ex)[:120]}")
+                continue
+            a["image"] = f"images/{out.name}"
+            a["image_credit"] = {"source": "Nexus Press", "author": "Nexus Press",
+                                 "license": "original editorial illustration", "kind": "illustration"}
+            a["image_kind"] = "illustration"
+            a.pop("cdn", None)
+            changed, repaired = True, repaired + 1
+    if changed:
+        (ROOT / "articles.json").write_text(
+            json.dumps({"categories": CATEGORIES, "articles": {k: data[k] for k in CATEGORIES}},
+                       ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"repaired {repaired} missing/placeholder image reference(s)")
+
+
 # ----------------------------------------------------------------------------- layout pieces
 def head(title, desc, pre, canonical="", image="", extra=""):
     ads = (f'<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={e(ADSENSE_CLIENT)}" crossorigin="anonymous"></script>'
@@ -230,10 +270,16 @@ def HAS_DEALS():
     return (ROOT / "deals" / "index.html").exists()
 
 
+def live_categories(data):
+    """Every section is always visible in the header, the footer and the sitemap, even before its first
+    article, so the reader can see the full structure of the newspaper. Empty sections still get a
+    useful page (editorial note + city directory / book guide), never a blank screen."""
+    return list(CATEGORIES)
+
+
 def header(pre, data, active):
     ticker = "  •  ".join(a["title"] for k in CATEGORIES for a in data[k][:2]) or "نكسوس بريس — أخبار العالم على مدار الساعة"
-    nav_names = {k: (("🏙️ " + v) if k == "ar_cities" else ("📚 " + v) if k == "ar_books" else v) for k, v in CATEGORIES.items()}
-    items = ([("index.html", "الرئيسية", "home")] + [(f"category-{k}.html", nav_names[k], k) for k in CATEGORIES]
+    items = ([("index.html", "الرئيسية", "home")] + [(f"category-{k}.html", CATEGORIES[k], k) for k in live_categories(data)]
              + [("weather.html", "🌦️ الطقس والصلاة", "weather"), ("ai-academy.html", "🎓 أكاديمية AI", "ai")]
              + ([("deals/index.html", "🛒 عروض أمازون", "deals")] if HAS_DEALS() else []))
     nav = "".join(f'<li><a href="{pre}{u}"{" class=active" if active == key else ""}>{e(n)}</a></li>' for u, n, key in items)
@@ -253,13 +299,16 @@ def header(pre, data, active):
 <div class="breaking"><b>عاجل</b><div><span class="ticker">{e(ticker)}</span></div></div>"""
 
 
-def footer(pre):
-    cats = "".join(f'<li><a href="{pre}category-{k}.html">{e(v)}</a></li>' for k, v in CATEGORIES.items())
+def footer(pre, data):
+    cats = "".join(f'<li><a href="{pre}category-{k}.html">{e(CATEGORIES[k])}</a></li>' for k in live_categories(data))
     services = (f'<li><a href="{pre}weather.html">الطقس ومواقيت الصلاة</a></li>'
                 f'<li><a href="{pre}ai-academy.html">أكاديمية الذكاء الاصطناعي</a></li>'
                 + (f'<li><a href="{pre}deals/index.html">عروض أمازون</a></li>' if HAS_DEALS() else ""))
-    info = (f'<li><a href="{pre}about.html">من نحن</a></li><li><a href="{pre}contact.html">اتصل بنا</a></li>'
-            f'<li><a href="{pre}privacy-policy.html">سياسة الخصوصية</a></li><li><a href="{pre}feed.xml">RSS</a></li>')
+    info = (f'<li><a href="{pre}about.html">من نحن</a></li>'
+            f'<li><a href="{pre}editorial-policy.html">سياسة التحرير</a></li>'
+            f'<li><a href="{pre}contact.html">اتصل بنا</a></li>'
+            f'<li><a href="{pre}privacy-policy.html">سياسة الخصوصية</a></li>'
+            f'<li><a href="{pre}terms.html">شروط الاستخدام</a></li><li><a href="{pre}feed.xml">RSS</a></li>')
     return f"""<footer class="footer"><div class="container footer-grid">
 <div><h4>نكسوس بريس | Nexus Press</h4><p>جريدة إلكترونية تتابع أبرز أحداث العالم في السياسة والاقتصاد والتكنولوجيا والرياضة والثقافة.</p></div>
 <div><h4>الأقسام والخدمات</h4><ul>{cats}{services}</ul></div>
@@ -387,11 +436,13 @@ def reading_time(text):
     return max(1, round(len(re.findall(r"\S+", text)) / 190))
 
 
-def city_chips(pre="", active=""):
-    """The list of Moroccan cities: visitors pick their city and get its own news page."""
+def city_chips(pre="", active="", city_pages=True):
+    """The list of Moroccan cities: visitors pick their city and get its own news page.
+    Before the first city story exists we link to the section itself (no empty city pages)."""
+    href = (lambda slug: f"{pre}city-{slug}.html") if city_pages else (lambda slug: f"{pre}category-ar_cities.html#city-{slug}")
     return ('<nav class="city-chips" aria-label="اختر مدينتك">'
             '<span class="city-chips-t">📍 اختر مدينتك:</span>'
-            + "".join(f'<a class="city-chip{" on" if slug == active else ""}" href="{pre}city-{slug}.html">{e(name)}</a>'
+            + "".join(f'<a class="city-chip{" on" if slug == active else ""}" href="{href(slug)}">{e(name)}</a>'
                       for name, slug, region in cities.CITIES) + "</nav>")
 
 
@@ -403,20 +454,26 @@ def city_panel(name, region, count):
 
 def shell(title, desc, pre, canonical, data, active, inner, poll, extra_head="", image=""):
     return (head(title, desc, pre, canonical, image, extra_head) + header(pre, data, active)
-            + f'<div class="container">{ad("top")}{inner}{ad("bottom")}</div>' + footer(pre))
+            + f'<div class="container">{ad("top")}{inner}{ad("bottom")}</div>' + footer(pre, data))
 
 
 # ----------------------------------------------------------------------------- build
 def build():
     data = load()
+    ensure_images(data)
     poll = load_poll()
     base = SITE_URL
     (ROOT / "articles").mkdir(exist_ok=True)
     for old in (ROOT / "articles").glob("*.html"):
         old.unlink()
-    urls = (["index.html"] + [f"category-{k}.html" for k in CATEGORIES]
-            + [f"city-{s}.html" for _, s, _ in cities.CITIES]
-            + ["weather.html", "search.html", "about.html", "contact.html", "privacy-policy.html", "ai-academy.html"])
+    live = live_categories(data)
+    if not data["ar_cities"]:
+        for _, s, _ in cities.CITIES:
+            (ROOT / f"city-{s}.html").unlink(missing_ok=True)
+    urls = (["index.html"] + [f"category-{k}.html" for k in live]
+            + (["city-" + s + ".html" for _, s, _ in cities.CITIES] if data["ar_cities"] else [])
+            + ["weather.html", "search.html", "about.html", "contact.html", "privacy-policy.html",
+               "editorial-policy.html", "terms.html", "ai-academy.html"])
     allart = sorted(((k, a) for k in CATEGORIES for a in data[k]), key=lambda t: t[1]["date"], reverse=True)
     for k, a in allart:  # never show Moroccan outlets as a source, except in «أخبار المدن» (local press is the source)
         if k not in MOROCCAN_OK_CATS:
@@ -438,18 +495,18 @@ def build():
     else:
         hero = '<div class="slider"><div class="hero-fallback">جاري تجهيز أحدث الأخبار…</div></div>'
     sections, shown = "", 0
-    for k, name in CATEGORIES.items():
-        if not data[k] and k != "ar_cities":
-            continue
+    for k in live:
+        name = CATEGORIES[k]
         cards_html = "".join(card(a, "", k) for a in data[k][:6])
         extra = ""
         if k == "ar_cities":
-            extra = (city_chips("") +
+            extra = (city_chips("", city_pages=bool(data["ar_cities"])) +
                      '<p class="city-lead">حوادث، جرائم، قضايا، أمن ومدن: تابع ما يقع في مدينتك، مع ذكر المصادر في أسفل كل مقال.</p>')
         elif k == "ar_books":
             extra = BOOKS_LEAD
         if not data[k]:
-            cards_html = '<div class="empty">سيبدأ نشر أخبار المدن في الدورة القادمة. اختر مدينتك من اللائحة أعلاه.</div>'
+            cards_html = ('<div class="empty">قسم «' + e(name) + '» جاهز: يبدأ النشر فيه مع أول المواد المؤكدة، '
+                          f'ويمكنك تصفح القسم من <a class="badge" href="category-{k}.html">هنا ←</a>.</div>')
         more_link = f'<p class="more"><a class="badge" href="category-{k}.html">كل مقالات {e(name)} ←</a></p>'
         sections += f'<section class="sect"><h2 class="block-title">{e(name)}</h2>{extra}<div class="grid">{cards_html}</div>{more_link}</section>'
         shown += 1
@@ -466,14 +523,21 @@ def build():
         "", base + "/" if base else "", data, "home", inner, poll), encoding="utf-8")
 
     # ---- categories + articles
-    for k, name in CATEGORIES.items():
+    for k in live:
+        name = CATEGORIES[k]
         cards = "".join(card(a, "", k) for a in data[k]) or '<div class="empty">لا توجد مقالات في هذا القسم بعد.</div>'
         extra = ""
         if k == "ar_cities":
-            extra = (city_chips("") + '<p class="city-lead">قسم مخصص لكل ما يقع في مدن المملكة: الحوادث والجرائم والقضايا '
-                     'والأمن والتحقيقات، بأسلوب صحفي معمّق ومع ذكر المصادر. اختر مدينتك لتقرأ أخبارها وحدها.</p>')
+            extra = (city_chips("", city_pages=bool(data["ar_cities"])) +
+                     '<p class="city-lead">قسم مخصص لكل ما يقع في مدن المملكة: الحوادث والجرائم والقضايا '
+                     'والأمن والتحقيقات، بأسلوب صحفي معمّق ومع ذكر المصادر. اختر مدينتك لتقرأ أخبارها وحدها.</p>'
+                     + ("" if data["ar_cities"] else
+                        '<div class="empty">لا توجد بعد أخبار مدن مؤكدة تستحق النشر. نفضّل الانتظار على نشر خبر ناقص أو '
+                        'غير موثق، وستظهر تغطية كل مدينة هنا فور توفرها.</div>'))
         elif k == "ar_books":
-            extra = BOOKS_LEAD
+            extra = BOOKS_LEAD + ("" if data["ar_books"] else
+                                  '<div class="empty">قوائم الكتب تُبنى آلياً من مستودع Free Programming Books؛ '
+                                  'تظهر هنا فور اكتمال أول قائمة من خمسة كتب حقيقية.</div>')
         inner = (f'<div class="layout"><main><h1 class="block-title">{e(name)}</h1>{extra}<div class="grid">{cards}</div>{ad("middle")}</main>'
                  f'{sidebar("", data, poll)}</div>')
         (ROOT / f"category-{k}.html").write_text(shell(f"{name} | نكسوس بريس", f"آخر مقالات قسم {name} في جريدة نكسوس بريس.", "",
@@ -494,6 +558,15 @@ def build():
             ld = json.dumps({"@context": "https://schema.org", "@type": "NewsArticle", "headline": a["title"], "datePublished": a["date"],
                              "image": [img_abs], "publisher": {"@type": "Organization", "name": "نكسوس بريس"},
                              "author": {"@type": "Organization", "name": "هيئة تحرير نكسوس بريس"}}, ensure_ascii=False)
+            credit = a.get("image_credit") or {}
+            if credit.get("kind") == "illustration" or credit.get("source") == "Nexus Press":
+                credit_html = '<figcaption class="img-credit">رسم توضيحي أصلي — نكسوس بريس</figcaption>'
+            elif credit.get("kind") == "ai" or str(credit.get("source", "")).lower() in ("ai", "gemini", "openai", "cloudflare", "together", "hfspace", "genai"):
+                credit_html = '<figcaption class="img-credit">صورة توليدية أُنشئت خصيصاً لـ«نكسوس بريس»</figcaption>'
+            elif credit.get("source") or credit.get("author"):
+                credit_html = f'<figcaption class="img-credit">الصورة: {e(credit.get("author") or credit.get("source"))}</figcaption>'
+            else:
+                credit_html = ""
             rt = reading_time(a["content"])
             inner = f"""<div class="layout"><main><article class="article">
 <nav class="crumbs" aria-label="مسار التصفح"><a href="../index.html">الرئيسية</a> › <a href="../category-{k}.html">{e(name)}</a>{city_crumb}</nav>
@@ -501,7 +574,7 @@ def build():
 <div class="meta">هيئة تحرير نكسوس بريس · {e(a["date"][:10])} · ⏱ {rt} د للقراءة</div>
 {share_bar()}
 {ad("article_top")}
-<img class="hero" width="1000" height="520" fetchpriority="high" src="{e(img_src(a, "../", 1000)[0])}"{img_src(a, "../", 1000)[1]} alt="{e(a.get("image_alt", a["title"]))}">
+<figure class="hero-fig"><img class="hero" width="1000" height="563" fetchpriority="high" src="{e(img_src(a, "../", 1000)[0])}"{img_src(a, "../", 1000)[1]} alt="{e(a.get("image_alt", a["title"]))}">{credit_html}</figure>
 <div class="article-body">
 
 {render_body(a["content"])}
@@ -513,8 +586,8 @@ def build():
                 f'<script type="application/ld+json">{ld}</script>', img_abs), encoding="utf-8")
             urls.append(f"articles/{a['id']}.html")
 
-    # ---- one page per Moroccan city (أخبار المدن)
-    for cname, cslug, cregion in cities.CITIES:
+    # ---- one page per Moroccan city (أخبار المدن): only once the section has real stories
+    for cname, cslug, cregion in (cities.CITIES if data["ar_cities"] else []):
         items = [a for a in data["ar_cities"] if a.get("city") == cname]
         cards = ("".join(card(a, "", "ar_cities") for a in items)
                  or '<div class="empty">لا توجد أخبار منشورة عن هذه المدينة بعد. سنغطيها في أقرب دورة نشر.</div>')
