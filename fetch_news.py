@@ -492,7 +492,7 @@ def compat_text(name, system, user):
             print(f"{name} model '{model}' unusable -> trying next ({str(ex)[:120]})")
             last = ex if isinstance(ex, ApiError) else ApiError(0, str(ex), name)
     raise last
-    
+
 
 def generate_text(system, user):
     providers = []
@@ -788,7 +788,7 @@ def overlap(paras, sources, n=5):
 
 
 def parse_json(text):
-    text = re.sub(r"(?is) thinking.*?", "", text).strip()
+    text = re.sub(r"(?is)<think>.*?</think>", "", text).strip()
     a, b = text.find("{"), text.rfind("}")
     return json.loads(text[a:b + 1])
 
@@ -1002,7 +1002,7 @@ def image_openai(prompt, seed):
         payload["quality"] = os.getenv("OPENAI_IMAGE_QUALITY", "").strip() or "medium"
     res = call_json("https://api.openai.com/v1/images/generations", payload, {"Authorization": f"Bearer {OPENAI_KEY}"}, "openai", tries=2)
     item = (res.get("data") or [{}])[0]
-        if item.get("b64_json"):
+    if item.get("b64_json"):
         return base64.b64decode(item["b64_json"]), False
     if item.get("url"):
         return request(item["url"], timeout=120), False
@@ -1302,7 +1302,7 @@ def anonymize_archive(arts, limit=20):
                 if a.get("anon") != ANON_VER and needs_anon(k, a.get("title", "") + " " + a.get("summary", "")):
                     todo.append((k, a))
     todo.sort(key=lambda ka: ka[1].get("date", ""), reverse=True)
-        done = 0
+    done = 0
     for k, a in todo[:limit]:
         art = {"title": a["title"], "summary": a.get("summary", ""),
                "body": [p for p in a.get("content", "").split("\n\n") if p.strip()]}
