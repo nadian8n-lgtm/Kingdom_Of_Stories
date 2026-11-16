@@ -12,7 +12,8 @@ SKIP_PREFIX = ("http:", "https:", "//", "mailto:", "tel:", "data:", "#", "javasc
 problems = []
 
 for need in ("style.css", "site.js", "tools.js", "sw.js", "logo.webp", "manifest.webmanifest", "feed.xml", "search.json",
-             "index.html", "about.html", "contact.html", "privacy-policy.html", "weather.html", "search.html", "ai-academy.html", "chat.js"):
+             "index.html", "about.html", "contact.html", "privacy-policy.html", "editorial-policy.html", "terms.html",
+             "404.html", "weather.html", "search.html", "ai-academy.html", "chat.js"):
     if not (ROOT / need).exists():
         problems.append(f"missing core file: {need}")
 
