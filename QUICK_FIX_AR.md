@@ -1,4 +1,24 @@
-إصلاح سريع لإلغاء GitHub Actions بعد ساعة
+إصلاح سريع لإلغاء GitHub Actions وخطأ IndentationError في build_site.py
+التشخيص المؤكد لخطأ السجل الأخير
+من لقطة الشاشة:
+
+فشل fetch_news.py و check_site.py و adsense_audit.py كلها بنفس الخطأ:
+File "/home/runner/work/Nexus_Press/Nexus_Press/build_site.py", line 351
+  return f'<section class="nl-band">...</section>'
+IndentationError: expected an indented block after 'if' statement on line 350
+السبب: نسخة build_site.py المرفوعة حالياً على GitHub معطوبة في دالة newsletter() (السطر 350–351 بدون 4 مسافات بعد if kind == "band":)، كما أن نسخة adsense_audit.py على GitHub قديمة (import build_site بالسطر 26 بدل 30).
+
+الحل المباشر خطوة بخطوة
+ارفع كل ملفات الحزمة المصححة إلى مستودعك على GitHub (ولا ترفع فقط ملفاً واحداً):
+
+build_site.py (مصحح ونظيف تماماً)
+fetch_news.py (تحديث 2026-11-16d + توحيد فحص الحدة والصور)
+check_site.py (فحص القسم الفعلي من articles.json بدل الاعتماد على بادئة الـ ID)
+adsense_audit.py (إصلاح مقارنة تكرار الصور)
+curate.py و books_library.py و legal.py و style.css و articles.json
+.github/workflows/auto_news.yml (في مساره .github/workflows/)
+ثم شغّل Actions → Nexus Press Auto Publisher → Run workflow بـ count = 8 و regen_images = none.
+
 التشخيص المؤكد
 من لقطة الشاشة، السبب واضح:
 
