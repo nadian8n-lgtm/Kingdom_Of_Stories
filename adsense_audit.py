@@ -8,8 +8,8 @@ defects that get an AdSense application rejected:
     missing picture credit, SVG placeholders (the old blue "MA" box)
   * an article without a cited source, or a Moroccan source in a
     non-Moroccan section
-  * a foreign story filed under «أخبار المغرب» or «أخبار المدن»
-  * Latin-only / empty / too-short articles, books outside 450-800 words
+  * a foreign story filed under «أخبار المغرب» أو «أخبار المدن»
+  * Latin-only / empty / too-short articles, books outside 430-820 words
   * emoji flags, lorem ipsum, undefined/None leftovers, forbidden image hosts
   * missing legal pages, missing sources block, missing image credit caption
   * a thin section (fewer than ADSENSE_MIN_PER_CATEGORY articles)
@@ -17,15 +17,11 @@ defects that get an AdSense application rejected:
 Anything that is a judgement call (a single-source article, a sensitive
 headline) is printed as a WARNING and does not fail the build.
 """
-import hashlib
-import json
 import os
 import re
-import statistics
 import sys
 import unicodedata
 from pathlib import Path
-from urllib.parse import urlparse
 
 import build_site
 
@@ -40,7 +36,16 @@ LETTERS = re.compile(r"[^\W\d_]", re.UNICODE)
 FLAG = re.compile(r"[\U0001F1E6-\U0001F1FF]")
 SEXUAL_RX = re.compile(r"(?:سكس|إباح|اباح|إباحية|عاري(?!تين)|اغتصاب|تحرش جنسي|onlyfans|porn)")
 RISKY = ("مجزرة", "إرهاب", "اغتيال", "انتحار", "طفل", "قاصر", "جثة", "دماء")
-JUNK = ("lorem ipsum", "undefined", "null", "none", "todo", "pollinations", "picsum", "placeholder", "test article")
+# Unambiguous leftovers: they can never be a legitimate part of an article.
+JUNK = ("lorem ipsum", "pollinations", "picsum", "test article")
+# Real words in a programming article (a JavaScript book list talks about "undefined" and "placeholder" all the time),
+# so they only fail outside the tech/library sections - there they are almost certainly a template leftover.
+JUNK_TECH = ("undefined", "null", "none", "todo", "placeholder")
+TECH_CATS = ("ar_tech", "ar_books")
+_JUNK_WORDS = JUNK + JUNK_TECH
+JUNK_RX = {w: re.compile(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])") for w in _JUNK_WORDS}
+# An unrendered f-string/format placeholder, e.g. {lo} or {image_prompt}: always a defect.
+TEMPLATE_RX = re.compile(r"\{[a-z_][a-z0-9_]{1,20}\}")
 REQUIRED_PAGES = ("index.html", "about.html", "contact.html", "privacy-policy.html",
                   "editorial-policy.html", "terms.html", "404.html", "feed.xml", "sitemap.xml",
                   "robots.txt", "style.css", "site.js", "tools.js", "sw.js", "logo.webp",
@@ -106,7 +111,7 @@ for src in ROOT.glob("*.py"):
             problems.append(f"{src.name}: forbidden image provider/token '{bad}'")
 
 # ---------------------------------------------------------------- articles
-ids, titles, image_hashes = {}, {}, {}
+ids, titles, image_hashes, seen_paths = {}, {}, {}, {}
 content_sets = []
 for k, a in allart:
     aid, title = a.get("id", ""), a.get("title", "")
@@ -133,8 +138,15 @@ for k, a in allart:
     body = a.get("content", "")
     low = (title + " " + body).lower()
     for bad in JUNK:
-        if bad in low:
+        if JUNK_RX[bad].search(low):
             problems.append(f"{aid}: leftover junk word '{bad}'")
+    if k not in TECH_CATS:
+        for bad in JUNK_TECH:
+            if JUNK_RX[bad].search(low):
+                problems.append(f"{aid}: template leftover '{bad}' (only allowed inside a programming article)")
+    tpl = TEMPLATE_RX.search(low)
+    if tpl:
+        problems.append(f"{aid}: unrendered template placeholder {tpl.group(0)}")
     if SEXUAL_RX.search(low):
         problems.append(f"{aid}: sexual/inappropriate term -> AdSense risk")
     if any(w in low for w in RISKY) and not a.get("sources"):
@@ -143,7 +155,7 @@ for k, a in allart:
     wc = words(body)
     if k == "ar_books":
         if not (430 <= wc <= 820):
-            problems.append(f"{aid}: books article {wc} words (must be 450-800)")
+            problems.append(f"{aid}: books article {wc} words (must be 430-820)")
     else:
         if wc < 430:
             problems.append(f"{aid}: article too thin ({wc} words)")
@@ -212,8 +224,11 @@ for k, a in allart:
             image_hashes[aid] = (h, rel)
         except Exception as ex:
             warnings.append(f"{aid}: image could not be analysed ({str(ex)[:60]})")
-        if rel in [v[1] for v in image_hashes.values() if v[1] != rel]:
-            problems.append(f"{aid}: same image file reused")
+        owner = seen_paths.get(rel)
+        if owner and owner != aid:
+            problems.append(f"{aid}: same image file reused ({rel} already belongs to {owner})")
+        else:
+            seen_paths[rel] = aid
 
     # built page markers
     page = ROOT / "articles" / f"{aid}.html"
