@@ -181,7 +181,13 @@ def thumb(rel):
     if not p.exists() or p.suffix == ".svg":
         return rel
     t = ROOT / "images" / "t" / (p.stem + ".webp")
-    if not t.exists():
+    # Regenerate when the source picture changed. image_jobs.py overwrites a path in place, and without this the
+    # cards/thumbnails keep showing the old illustration forever while the article page shows the new photograph.
+    try:
+        stale = t.exists() and t.stat().st_mtime < p.stat().st_mtime
+    except OSError:
+        stale = True
+    if not t.exists() or stale:
         try:
             from PIL import Image
             t.parent.mkdir(exist_ok=True)
@@ -218,8 +224,12 @@ def ensure_images(data):
                     broken = True
             if not broken:
                 continue
-            stem = f"{a.get('id', 'article')}-ill"
+            stem = f"{a.get('id') or 'article'}-ill"
             out = ROOT / "images" / f"{stem}.webp"
+            if a.get("image_kind") == "ai":
+                print(f"WARNING: the hand-made AI picture of {a.get('id')} is missing or unreadable "
+                      f"({rel or 'no path'}); drawing a temporary illustration so the build never breaks - "
+                      "run `python3 image_jobs.py apply <id> <file>` again to restore it")
             try:
                 import illustrations
                 illustrations.save(stem, k, a.get("title", ""), out)
@@ -338,7 +348,7 @@ def newsletter(kind="box"):
             '<button class="btn" type="submit">اشترك الآن</button></form><p class="form-msg nl-msg" role="status"></p>')
     txt = "اشترك الآن في النشرة البريدية لجريدة نكسوس بريس، لتصلك آخر الأخبار يوميًا"
     if kind == "band":
-        return f'<section class="nl-band"><div><h3>📬 النشرة البريدية</h3><p>{txt}.</p></div>{form}</section>'
+return f'<section class="nl-band"><div><h3>📬 النشرة البريدية</h3><p>{txt}.</p></div>{form}</section>'
     return f'<div class="widget nl-box"><h4>📬 النشرة البريدية</h4><p>{txt}.</p>{form}</div>'
 
 
@@ -627,6 +637,27 @@ def build():
               "ci": a.get("city", ""), "m": cdn(a, 480) or thumb(a["image"])}
              for k, a in allart]
     (ROOT / "search.json").write_text(json.dumps(index, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+    # ---- 404.html (GitHub Pages serves it for every unknown URL).
+    # Generated on purpose: check_site.py and adsense_audit.py both require it and the push step only runs when they
+    # both pass, so a missing 404.html silently blocked every publication ("missing core file: 404.html").
+    popular = "".join('<li><a href="articles/%s.html">%s</a></li>' % (e(a["id"]), e(a["title"])) for _, a in allart[:8])
+    cats404 = "".join('<a class="city-chip" href="category-%s.html">%s</a>' % (e(k), e(v)) for k, v in CATEGORIES.items())
+    nf_more = popular or "<li>لا توجد مقالات بعد.</li>"
+    nf = ('<div class="page"><div class="city-hero"><div><span class="city-kicker">404</span>'
+          '<h1>الصفحة غير موجودة</h1>'
+          '<p class="city-region">الرابط الذي فتحته غير صحيح، أو أن المقال حُذف أو نُقل إلى عنوان آخر.</p></div>'
+          '<div class="city-hero-ico" aria-hidden="true">🔎</div></div>'
+          '<p class="lead">يمكنك المتابعة من هنا:</p>'
+          '<nav class="city-chips" aria-label="الأقسام">' + cats404 +
+          '<a class="city-chip" href="weather.html">الطقس ومواقيت الصلاة</a>'
+          '<a class="city-chip" href="search.html">البحث</a></nav>'
+          '<h2>آخر المقالات</h2><ul>' + nf_more + '</ul>'
+          '<p><a class="btn" href="index.html">العودة إلى الصفحة الرئيسية</a></p></div>')
+    (ROOT / "404.html").write_text(shell(
+        "الصفحة غير موجودة (404) | نكسوس بريس", "الصفحة التي تبحث عنها غير موجودة في نكسوس بريس.",
+        "", "", data, "", '<div class="layout"><main>' + nf + '</main>' + sidebar("", data, poll) + '</div>', poll,
+        '<meta name="robots" content="noindex,follow">'), encoding="utf-8")
 
     # ---- legal pages
     today = datetime.now().strftime("%Y-%m-%d")
