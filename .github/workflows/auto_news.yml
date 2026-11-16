@@ -124,4 +124,4 @@ jobs:
             if git push origin HEAD:main; then echo "pushed"; exit 0; fi
             echo "push failed, retry $i"; sleep $((i * 6))
           done
-          echo "::error::could not push after 4 attempts"; exit 
+          echo "::error::could not push after 4 attempts"; exit 1
