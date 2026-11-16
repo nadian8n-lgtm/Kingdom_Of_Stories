@@ -248,7 +248,7 @@ for i in range(len(content_sets)):
 for k, name in build_site.CATEGORIES.items():
     n = len(data[k])
     if n == 0:
-        warnings.append(f"section «{name}» is empty -> the page is visible but shows no real article yet")
+        warnings.append(f"section «{name}» is empty -> it must stay hidden until it has real articles")
     elif n < MIN_PER_CAT:
         problems.append(f"section «{name}» has only {n} articles (minimum {MIN_PER_CAT})")
 
