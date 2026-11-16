@@ -30,7 +30,9 @@ HF_IMAGE_SPACE / HF_TOKEN (optional: the keyless Hugging Face FLUX Space works w
 OPENAI_API_KEY / OPENAI_IMAGE_MODEL (optional, ChatGPT images), GEMINI_TEXT_MODEL / GEMINI_IMAGE_MODEL (optional),
 MAX_PER_RUN (6), MIN_PER_CATEGORY (6), KEEP_PER_CATEGORY (30),
 PAUSE_SECONDS (8), CLOUDINARY_URL (or CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET) -> images are also
-uploaded to Cloudinary and served from its CDN (auto format/size, much faster), REGEN_IMAGES = none | svg (default: replaces up to 8 placeholder images per run) | svgall (all placeholders) | all (redraw every image once)
+uploaded to Cloudinary and served from its CDN (auto format/size, much faster), REGEN_IMAGES = none | svg (default: replaces up to 8 placeholder images per run) | svgall (all placeholders) | all (redraw every image once),
+RUN_BUDGET_MIN (150): after this many minutes the run stops starting new articles, builds the site and pushes what it already
+wrote, so a slow or rate-limited run can never be cancelled again with nothing published.
 """
 import base64
 import hashlib
@@ -66,7 +68,7 @@ CF_TOKEN = (os.getenv("CF_API_TOKEN") or os.getenv("CLOUDFLARE_API_TOKEN") or ""
 TOGETHER_KEY = os.getenv("TOGETHER_API_KEY", "").strip()   # free FLUX.1-schnell-Free tier
 # Gemini image generation first, then the two FREE Flux providers, then the optional SDK / paid ChatGPT images.
 # Every picture is generated for THIS story only; there are no stock-photo or random-picture providers any more.
-PIPELINE_VER = "2026-11-16a"   # printed at the start of every run, so the Actions log proves which code is running
+PIPELINE_VER = "2026-11-16b"   # printed at the start of every run, so the Actions log proves which code is running
 KNOWN_IMAGE_PROVIDERS = ("gemini", "cloudflare", "together", "hfspace", "genai", "openai")
 IMAGE_PROVIDERS = [p.strip() for p in (os.getenv("IMAGE_PROVIDERS") or ",".join(KNOWN_IMAGE_PROVIDERS)).split(",") if p.strip()]
 # only the providers implemented below can ever run, even if an old workflow still lists a retired one
@@ -79,6 +81,7 @@ MIN_PER_CAT = int(os.getenv("MIN_PER_CATEGORY") or "6")
 KEEP = int(os.getenv("KEEP_PER_CATEGORY") or "30")
 PAUSE = int(os.getenv("PAUSE_SECONDS") or "8")
 REGEN = (os.getenv("REGEN_IMAGES") or "svg").lower()
+RUN_BUDGET_MIN = int(os.getenv("RUN_BUDGET_MIN") or "150")   # stop starting new articles after this many minutes; the run still builds and pushes
 MIN_WORDS, MAX_WORDS = 800, 1500
 MIN_WORDS_TREND, MAX_WORDS_TREND = 550, 1300   # trend stories have thinner source material
 MAX_OVERLAP = 0.05  # max share of 5-word sequences allowed to match the source text
@@ -1461,6 +1464,9 @@ def main():
         raise SystemExit("ERROR: no AI key found. Add GEMINI_API_KEY (https://aistudio.google.com/apikey) in GitHub: "
                          "Settings > Secrets and variables > Actions > Secrets. Optional fallbacks: GROQ_API_KEY, OPENROUTER_API_KEY.")
     print("pipeline:", PIPELINE_VER, "| regen images:", REGEN)
+    started = time.monotonic()
+    deadline = started + RUN_BUDGET_MIN * 60
+    print("run budget:", RUN_BUDGET_MIN, "min (the run always builds and pushes before this limit)")
     print("cloudinary:", "on" if cloudinary_cfg() else "off (set CLOUDINARY_URL or the 3 CLOUDINARY_* secrets)")
     print("image providers:", ",".join(IMAGE_PROVIDERS), "| gemini:", "on" if GEMINI_KEY else "off",
           "| cloudflare:", "on" if (CF_ACCOUNT and CF_TOKEN) else "off (add CF_ACCOUNT_ID + CF_API_TOKEN)",
@@ -1513,6 +1519,10 @@ def main():
 
     made, stuck, errors = 0, set(), []
     while made < MAX_PER_RUN and len(stuck) < len(arts) and len(errors) < 2:
+        if time.monotonic() >= deadline:
+            print(f"run budget reached ({RUN_BUDGET_MIN} min): stopping generation and building what is ready "
+                  f"({made}/{MAX_PER_RUN} new articles this run)")
+            break
         # neediest category first; once all have >= MIN_PER_CAT, rotate to the one with the oldest latest article
         cat = min((k for k in arts if k not in stuck),
                   key=lambda k: (len(arts[k]) >= MIN_PER_CAT, len(arts[k]), arts[k][0]["date"] if arts[k] else ""))
