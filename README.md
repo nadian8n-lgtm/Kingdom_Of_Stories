@@ -1,4 +1,45 @@
-تحديث نكسوس بريس — إظهار كل الأقسام + إصلاح الصور المفقودة + بوابة أدسنس
+تحديث نكسوس بريس (2026-11-16d) — إصلاح خطأ build_site.py + مزامنة ملفات البوت + فجوات الفحص والصور
+سبب الخطأ الظاهر في لقطة الشاشة (IndentationError في build_site.py)
+جميع الخطوات الثلاث في GitHub Actions فشلت عند استيراد build_site:
+
+fetch_news.py:55 -> import build_site
+check_site.py:8 -> import build_site
+adsense_audit.py:26 -> import build_site
+والسبب: النسخة الموجودة حالياً على GitHub من ملف build_site.py فيها خطأ إزاحة (IndentationError) في السطر 350–351 داخل دالة newsletter():
+
+IndentationError: expected an indented block after 'if' statement on line 350
+return f'<section class="nl-band">...</section>'
+كما أن adsense_audit.py على GitHub مختلف عن نسخة الحزمة (import build_site في السطر 26 بدل السطر 30)، مما يعني أن المستودع على GitHub لم يتلقَّ جميع ملفات التحديث السابقة متزامنةً.
+
+الإصلاحات المضافة في هذه النسخة (2026-11-16d)
+build_site.py:
+
+دالة newsletter() نظيفة وبإزاحة صحيحة 100% (لا IndentationError).
+توحيد حد حجم الصورة في ensure_images ليصبح 8192 بايت (8 KB) مطابقاً تماماً لبوابة adsense_audit.py (بدل 4096).
+إضافة شبكة أمان داخلية عبر Pillow لرسم صورة WebP حادة ومعتمدة تلقائياً إذا غاب illustrations.py عن المستودع.
+إنشاء robots.txt وsitemap.xml حتى عند التشغيل المحلي بدون SITE_URL.
+check_site.py:
+
+تحديد قسم المقال من articles.json (id_to_cat) بدل الاعتماد على بادئة اسم الملف (page.name.split("-")[0])، لأن curate.py ينقل المقالات بين الأقسام دون تغيير الـ id.
+فحص الروابط المغربية داخل قسم المصادر .sources حصراً وتجاهل query string (?v=...) عند عدّ الصور المكررة.
+fetch_news.py و adsense_audit.py:
+
+توحيد قياس الحدة SHARP_MIN = 80 على الصورة الكاملة في fetch_news.py ليتطابق 100% مع adsense_audit.py (بدل 30 على نسخة مصغرة).
+تخطي تصنيف LLM في curate.run() إذا انتهت ميزانية الوقت قبل بدء المعالجة.
+إصلاح فحص تكرار ملف الصورة في adsense_audit.py ليقارن ضد بقية المقالات فقط (a_other != aid).
+الملفات المطلوب رفعها إلى GitHub (جميعها في الحزمة)
+ارفع كامل ملفات الحزمة إلى جذر المستودع على GitHub (مع إبقاء auto_news.yml داخل .github/workflows/):
+
+build_site.py
+fetch_news.py
+check_site.py
+adsense_audit.py
+curate.py
+books_library.py
+legal.py
+style.css
+articles.json
+.github/workflows/auto_news.yml
 هذا التحديث يعالج مباشرة الخطأ الأحمر الذي ظهر في GitHub Actions:
 
 SITE CHECK FAILED
