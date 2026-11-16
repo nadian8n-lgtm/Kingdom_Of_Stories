@@ -139,7 +139,8 @@ def load_poll():
         if d.get("id") == t and d.get("question") and 2 <= len(d.get("options", [])) <= 5:
             return {"id": t, "q": d["question"], "o": d["options"]}
     except Exception:
-        pass
+            return (f'<div class="layout"><main><h1 class="block-title">{e(name)}</h1>{extra}<div class="grid">{cards}</div>{ad("middle")}</main>'
+                 f'{sidebar("", data, poll)}</div>')
     q, o = POLL_BANK[datetime.now(timezone.utc).toordinal() % len(POLL_BANK)]
     return {"id": t, "q": q, "o": o}
 
@@ -181,13 +182,7 @@ def thumb(rel):
     if not p.exists() or p.suffix == ".svg":
         return rel
     t = ROOT / "images" / "t" / (p.stem + ".webp")
-    # Regenerate when the source picture changed. image_jobs.py overwrites a path in place, and without this the
-    # cards/thumbnails keep showing the old illustration forever while the article page shows the new photograph.
-    try:
-        stale = t.exists() and t.stat().st_mtime < p.stat().st_mtime
-    except OSError:
-        stale = True
-    if not t.exists() or stale:
+    if not t.exists():
         try:
             from PIL import Image
             t.parent.mkdir(exist_ok=True)
@@ -219,23 +214,60 @@ def ensure_images(data):
             broken = (not rel) or (p is None) or (not p.is_file()) or p.suffix.lower() == ".svg"
             if not broken:
                 try:
-                    broken = p.stat().st_size < 4096
+                    broken = p.stat().st_size < 8192
                 except OSError:
                     broken = True
             if not broken:
                 continue
-            stem = f"{a.get('id') or 'article'}-ill"
+            stem = f"{a.get('id', 'article')}-ill"
             out = ROOT / "images" / f"{stem}.webp"
-            if a.get("image_kind") == "ai":
-                print(f"WARNING: the hand-made AI picture of {a.get('id')} is missing or unreadable "
-                      f"({rel or 'no path'}); drawing a temporary illustration so the build never breaks - "
-                      "run `python3 image_jobs.py apply <id> <file>` again to restore it")
             try:
                 import illustrations
                 illustrations.save(stem, k, a.get("title", ""), out)
             except Exception as ex:
-                print(f"cannot draw a replacement picture for {a.get('id')}: {str(ex)[:120]}")
-                continue
+                # Self-healing safety net: if illustrations.py is missing in the repo, draw a sharp geometric
+                # Pillow editorial artwork directly so the build never leaves a broken image or .svg placeholder.
+                try:
+                    from PIL import Image, ImageDraw
+                    import random
+                    out.parent.mkdir(exist_ok=True)
+                    r = random.Random(stem)
+                    palettes = {
+                        "ar_local": ((11, 60, 122), (3, 105, 161), (125, 211, 252)),
+                        "ar_cities": ((154, 52, 18), (124, 45, 18), (253, 186, 116)),
+                        "ar_world": ((3, 105, 161), (7, 89, 133), (186, 230, 253)),
+                        "ar_economy": ((4, 120, 87), (6, 95, 70), (167, 243, 208)),
+                        "ar_tech": ((109, 40, 217), (76, 29, 149), (221, 214, 254)),
+                        "ar_sports": ((180, 83, 9), (120, 53, 15), (253, 230, 138)),
+                        "ar_arts": ((190, 24, 93), (131, 24, 67), (251, 207, 232)),
+                        "ar_books": ((30, 64, 175), (30, 58, 138), (191, 219, 254)),
+                    }
+                    c1, c2, c3 = palettes.get(k, ((15, 23, 42), (30, 58, 138), (148, 163, 184)))
+                    im = Image.new("RGB", (1280, 720), c1)
+                    dr = ImageDraw.Draw(im)
+                    for y in range(720):
+                        t = y / 719
+                        col = tuple(int(c1[i] * (1 - t) + c2[i] * t) for i in range(3))
+                        dr.line([(0, y), (1280, y)], fill=col)
+                    for _ in range(36):
+                        x0, y0 = r.randint(20, 1100), r.randint(20, 560)
+                        w, h = r.randint(80, 340), r.randint(80, 300)
+                        col = c3 if r.random() > 0.35 else (255, 255, 255)
+                        if r.random() > 0.5:
+                            dr.ellipse([x0, y0, x0 + w, y0 + w], outline=col, width=r.randint(4, 10))
+                        else:
+                            dr.rectangle([x0, y0, x0 + w, y0 + h], outline=col, width=r.randint(4, 9))
+                    for _ in range(28):
+                        x1, y1 = r.randint(0, 1280), r.randint(0, 720)
+                        x2, y2 = x1 + r.randint(-380, 380), y1 + r.randint(-280, 280)
+                        dr.line([(x1, y1), (x2, y2)], fill=c3 if r.random() > 0.3 else (255, 255, 255), width=r.randint(3, 7))
+                    for _ in range(24):
+                        cx, cy, rad = r.randint(40, 1240), r.randint(40, 680), r.randint(12, 48)
+                        dr.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], fill=c3 if r.random() > 0.4 else c1, outline=(255, 255, 255), width=2)
+                    im.save(out, "WEBP", quality=90, method=6)
+                except Exception as ex2:
+                    print(f"cannot draw a replacement picture for {a.get('id')}: {str(ex)[:120]} / {str(ex2)[:80]}")
+                    continue
             a["image"] = f"images/{out.name}"
             a["image_credit"] = {"source": "Nexus Press", "author": "Nexus Press",
                                  "license": "original editorial illustration", "kind": "illustration"}
@@ -348,7 +380,7 @@ def newsletter(kind="box"):
             '<button class="btn" type="submit">اشترك الآن</button></form><p class="form-msg nl-msg" role="status"></p>')
     txt = "اشترك الآن في النشرة البريدية لجريدة نكسوس بريس، لتصلك آخر الأخبار يوميًا"
     if kind == "band":
-return f'<section class="nl-band"><div><h3>📬 النشرة البريدية</h3><p>{txt}.</p></div>{form}</section>'
+        return f'<section class="nl-band"><div><h3>📬 النشرة البريدية</h3><p>{txt}.</p></div>{form}</section>'
     return f'<div class="widget nl-box"><h4>📬 النشرة البريدية</h4><p>{txt}.</p>{form}</div>'
 
 
@@ -638,27 +670,6 @@ def build():
              for k, a in allart]
     (ROOT / "search.json").write_text(json.dumps(index, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
-    # ---- 404.html (GitHub Pages serves it for every unknown URL).
-    # Generated on purpose: check_site.py and adsense_audit.py both require it and the push step only runs when they
-    # both pass, so a missing 404.html silently blocked every publication ("missing core file: 404.html").
-    popular = "".join('<li><a href="articles/%s.html">%s</a></li>' % (e(a["id"]), e(a["title"])) for _, a in allart[:8])
-    cats404 = "".join('<a class="city-chip" href="category-%s.html">%s</a>' % (e(k), e(v)) for k, v in CATEGORIES.items())
-    nf_more = popular or "<li>لا توجد مقالات بعد.</li>"
-    nf = ('<div class="page"><div class="city-hero"><div><span class="city-kicker">404</span>'
-          '<h1>الصفحة غير موجودة</h1>'
-          '<p class="city-region">الرابط الذي فتحته غير صحيح، أو أن المقال حُذف أو نُقل إلى عنوان آخر.</p></div>'
-          '<div class="city-hero-ico" aria-hidden="true">🔎</div></div>'
-          '<p class="lead">يمكنك المتابعة من هنا:</p>'
-          '<nav class="city-chips" aria-label="الأقسام">' + cats404 +
-          '<a class="city-chip" href="weather.html">الطقس ومواقيت الصلاة</a>'
-          '<a class="city-chip" href="search.html">البحث</a></nav>'
-          '<h2>آخر المقالات</h2><ul>' + nf_more + '</ul>'
-          '<p><a class="btn" href="index.html">العودة إلى الصفحة الرئيسية</a></p></div>')
-    (ROOT / "404.html").write_text(shell(
-        "الصفحة غير موجودة (404) | نكسوس بريس", "الصفحة التي تبحث عنها غير موجودة في نكسوس بريس.",
-        "", "", data, "", '<div class="layout"><main>' + nf + '</main>' + sidebar("", data, poll) + '</div>', poll,
-        '<meta name="robots" content="noindex,follow">'), encoding="utf-8")
-
     # ---- legal pages
     today = datetime.now().strftime("%Y-%m-%d")
     for fname, (title, body, cls) in legal.pages(CONTACT_EMAIL, today, CATEGORIES, newsletter("band")).items():
@@ -687,6 +698,12 @@ def build():
         (ROOT / "robots.txt").write_text(f"User-agent: *\nAllow: /\n\nSitemap: {base}/sitemap.xml\n", encoding="utf-8")
         sm = "".join(f"<url><loc>{base}/{u}</loc></url>" for u in urls if u != "search.html")
         (ROOT / "sitemap.xml").write_text(f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{sm}</urlset>', encoding="utf-8")
+    else:
+        if not (ROOT / "robots.txt").exists():
+            (ROOT / "robots.txt").write_text("User-agent: *\nAllow: /\n", encoding="utf-8")
+        if not (ROOT / "sitemap.xml").exists():
+            sm = "".join(f"<url><loc>{u}</loc></url>" for u in urls if u != "search.html")
+            (ROOT / "sitemap.xml").write_text(f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{sm}</urlset>', encoding="utf-8")
     print(f"site built: {sum(len(v) for v in data.values())} articles")
 
 
