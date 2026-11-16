@@ -1,0 +1,173 @@
+diff --git a/fetch_news.py b/fetch_news.py
+index 86d14f1..62e5039 100644
+--- a/fetch_news.py
++++ b/fetch_news.py
+@@ -68,7 +68,7 @@ CF_TOKEN = (os.getenv("CF_API_TOKEN") or os.getenv("CLOUDFLARE_API_TOKEN") or ""
+ TOGETHER_KEY = os.getenv("TOGETHER_API_KEY", "").strip()   # free FLUX.1-schnell-Free tier
+ # Gemini image generation first, then the two FREE Flux providers, then the optional SDK / paid ChatGPT images.
+ # Every picture is generated for THIS story only; there are no stock-photo or random-picture providers any more.
+-PIPELINE_VER = "2026-11-16b"   # printed at the start of every run, so the Actions log proves which code is running
++PIPELINE_VER = "2026-11-16c"   # printed at the start of every run, so the Actions log proves which code is running
+ KNOWN_IMAGE_PROVIDERS = ("gemini", "cloudflare", "together", "hfspace", "genai", "openai")
+ IMAGE_PROVIDERS = [p.strip() for p in (os.getenv("IMAGE_PROVIDERS") or ",".join(KNOWN_IMAGE_PROVIDERS)).split(",") if p.strip()]
+ # only the providers implemented below can ever run, even if an old workflow still lists a retired one
+@@ -81,13 +81,30 @@ MIN_PER_CAT = int(os.getenv("MIN_PER_CATEGORY") or "6")
+ KEEP = int(os.getenv("KEEP_PER_CATEGORY") or "30")
+ PAUSE = int(os.getenv("PAUSE_SECONDS") or "8")
+ REGEN = (os.getenv("REGEN_IMAGES") or "svg").lower()
+-RUN_BUDGET_MIN = int(os.getenv("RUN_BUDGET_MIN") or "150")   # stop starting new articles after this many minutes; the run still builds and pushes
++if REGEN == "fill":
++    REGEN = "svg"   # the Actions input is named "fill"; internally it means the bounded placeholder repair pass
++RUN_BUDGET_MIN = max(1, min(int(os.getenv("RUN_BUDGET_MIN") or "150"), 300))   # never exceed the 350-minute Actions limit; leave time for build + push
+ MIN_WORDS, MAX_WORDS = 800, 1500
+ MIN_WORDS_TREND, MAX_WORDS_TREND = 550, 1300   # trend stories have thinner source material
+ MAX_OVERLAP = 0.05  # max share of 5-word sequences allowed to match the source text
+ DUP_DIST = 8        # images whose 64-bit hash differs by <= 8 bits from an existing one are treated as duplicates
+ UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 NexusPressBot/2.0"
+ 
++# Hard in-process deadline. It is set in main() and is checked by every network/image operation,
++# so a slow provider cannot make one article overrun the whole Actions job.
++RUN_DEADLINE = 0.0
++
++
++def time_budget_left():
++    """Seconds left in this run; a large value means no deadline was set (e.g. during local tests)."""
++    if not RUN_DEADLINE:
++        return 3600.0
++    return max(0.0, RUN_DEADLINE - time.monotonic())
++
++
++def budget_exceeded():
++    return time_budget_left() <= 1.0
++
+ COMPAT = {  # OpenAI-compatible free providers: base url, key, preferred model name fragments
+     "groq": ("https://api.groq.com/openai/v1", lambda: GROQ_KEY,
+              ["gpt-oss-120b", "llama-3.3-70b", "qwen", "llama-4", "gpt-oss-20b", "llama-3.1-8b"]),
+@@ -364,6 +381,11 @@ def request(url, payload=None, headers=None, timeout=120):
+     h = {"User-Agent": UA, **(headers or {})}
+     if payload is not None:
+         h["Content-Type"] = "application/json"
++    # Never let one HTTP call run past the in-process budget.  Keep one second for graceful fallback.
++    remaining = time_budget_left()
++    if remaining <= 1:
++        raise TimeoutError("run time budget reached")
++    timeout = min(float(timeout), max(1.0, remaining - 1.0))
+     try:
+         with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=h), timeout=timeout) as r:
+             return r.read()
+@@ -381,8 +403,10 @@ def call_json(url, payload, headers, label, tries=3):
+             m = re.search(r'"retryDelay":\s*"(\d+)', ex.body)
+             wait = int(m.group(1)) + 2 if m else 25 * n
+             if retriable and n < tries and wait <= 120:
++                wait = min(wait, max(0, int(time_budget_left()) - 1))
+                 print(f"{label}: HTTP {ex.code}, waiting {wait}s then retrying")
+-                time.sleep(wait)
++                if wait > 0:
++                    time.sleep(wait)
+                 continue
+             raise
+     raise ApiError(0, "retries exhausted", label)
+@@ -1017,7 +1041,8 @@ def image_genai(prompt, seed):
+     tmp = ROOT / "images" / f".genai-{seed}.bin"
+     tmp.parent.mkdir(exist_ok=True)
+     try:
+-        r = subprocess.run(["node", str(ROOT / "gen_image.mjs"), str(tmp), prompt], capture_output=True, text=True, timeout=480,
++        subprocess_timeout = max(1, min(480, int(time_budget_left()) - 1))
++        r = subprocess.run(["node", str(ROOT / "gen_image.mjs"), str(tmp), prompt], capture_output=True, text=True, timeout=subprocess_timeout,
+                            env={**os.environ, "GEMINI_API_KEY": GEMINI_KEY})
+     except Exception as ex:
+         raise ApiError(0, str(ex), "genai") from None
+@@ -1084,6 +1109,8 @@ def image_hfspace(prompt, seed):
+         raise ApiError(0, "no event_id from the Hugging Face Space", "hfspace")
+     data, event, deadline = None, "", time.time() + 180
+     while time.time() < deadline:
++        if budget_exceeded():
++            raise TimeoutError("run time budget reached while waiting for Hugging Face")
+         raw = request(f"{base}/gradio_api/call/infer/{eid}", headers=headers, timeout=120).decode("utf-8", "ignore")
+         for line in raw.splitlines():
+             if line.startswith("event:"):
+@@ -1162,6 +1189,9 @@ def make_image(prompt, art_id, cat, file_stem=None, title=""):
+     if Image:
+         known_hashes()
+         for prov in IMAGE_PROVIDERS:
++            if budget_exceeded():
++                print("image time budget reached -> using the fast local fallback")
++                break
+             if prov in STATE["dead_image"]:
+                 continue
+             if prov in ("gemini", "genai") and not GEMINI_KEY:
+@@ -1174,6 +1204,9 @@ def make_image(prompt, art_id, cat, file_stem=None, title=""):
+                 continue
+             chosen, chosen_h = None, None
+             for attempt in range(4):  # new seed + new angle/light each time until the picture is not a look-alike
++                if budget_exceeded():
++                    print("image time budget reached -> stopping provider retries")
++                    break
+                 seed = int(hashlib.md5(f"{art_id}-{attempt}".encode()).hexdigest()[:6], 16)
+                 full = build_prompt(prompt, art_id, cat, attempt)
+                 try:
+@@ -1459,6 +1492,7 @@ def ensure_poll(arts):
+ 
+ # ----------------------------------------------------------------------------- main
+ def main():
++    global RUN_DEADLINE
+     if not (GEMINI_KEY or GROQ_KEY or OPENROUTER_KEY):
+         build_site.build()
+         raise SystemExit("ERROR: no AI key found. Add GEMINI_API_KEY (https://aistudio.google.com/apikey) in GitHub: "
+@@ -1466,6 +1500,7 @@ def main():
+     print("pipeline:", PIPELINE_VER, "| regen images:", REGEN)
+     started = time.monotonic()
+     deadline = started + RUN_BUDGET_MIN * 60
++    RUN_DEADLINE = deadline
+     print("run budget:", RUN_BUDGET_MIN, "min (the run always builds and pushes before this limit)")
+     print("cloudinary:", "on" if cloudinary_cfg() else "off (set CLOUDINARY_URL or the 3 CLOUDINARY_* secrets)")
+     print("image providers:", ",".join(IMAGE_PROVIDERS), "| gemini:", "on" if GEMINI_KEY else "off",
+diff --git a/.github/workflows/auto_news.yml b/.github/workflows/auto_news.yml
+index f9f33ea..3f4a8d3 100644
+--- a/.github/workflows/auto_news.yml
++++ b/.github/workflows/auto_news.yml
+@@ -26,20 +26,22 @@ jobs:
+     runs-on: ubuntu-latest
+     timeout-minutes: 350   # الحد الأقصى الآمن (سقف GitHub 360): الكود يتوقف بنفسه عند RUN_BUDGET_MIN ثم يبني ويرفع
+     steps:
+-      - uses: actions/checkout@v4
+-      - uses: actions/setup-python@v5
++      - uses: actions/checkout@v7
++      - uses: actions/setup-python@v7
+         with:
+           python-version: '3.12'
+-      - uses: actions/setup-node@v4
++      - uses: actions/setup-node@v7
+         with:
+-          node-version: '20'
++          node-version: '24'
+       - run: pip install pillow
+       - name: Install Google Gen AI SDK (github.com/googleapis/js-genai) outside the repository
+         run: |
+           mkdir -p "$RUNNER_TEMP/genai"
+           npm install --prefix "$RUNNER_TEMP/genai" --no-package-lock --no-audit --no-fund @google/genai
+           echo "GENAI_DIR=$RUNNER_TEMP/genai" >> "$GITHUB_ENV"
++          echo "NODE_PATH=$RUNNER_TEMP/genai/node_modules" >> "$GITHUB_ENV"
+       - name: Generate articles and build site
++        id: generation
+         env:
+           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+@@ -78,12 +80,17 @@ jobs:
+           CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+         run: python fetch_news.py
+       - name: Check site (links, images, core files)
++        id: check
++        if: ${{ !cancelled() }}
+         run: python check_site.py
+       - name: AdSense pre-review audit (duplicates, blurry images, wrong sections)
++        id: audit
++        if: ${{ !cancelled() }}
+         env:
+           ADSENSE_MIN_PER_CATEGORY: ${{ vars.ADSENSE_MIN_PER_CATEGORY || '0' }}
+         run: python adsense_audit.py
+       - name: Commit and push (conflict-proof)
++        if: ${{ !cancelled() && steps.check.outcome == 'success' && steps.audit.outcome == 'success' }}
+         run: |
+           git config user.name "NexusPress-Bot"
+           git config user.email "bot@users.noreply.github.com"
