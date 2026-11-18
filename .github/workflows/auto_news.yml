@@ -1,4 +1,4 @@
-name: Nexus Press Auto Publisher
+name: مملكة الأسرار — النشر التلقائي
 
 on:
   schedule:
@@ -6,13 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       count:
-        description: 'عدد المقالات في هذه الدورة (ابدأ بـ 8 مع regen_images = none، ثم كرّر 8+8+8 لملء الأقسام)'
-        default: '6'
+        description: 'عدد المقالات في هذه الدورة لمملكة الأسرار (8 هو الافتراضي المتوازن)'
+        default: '8'
       regen_images:
-        description: 'الصور: none = لا شيء / fill = إصلاح الصور الناقصة فقط / all = إعادة رسم كل الصور'
+        description: 'صور مملكة الأسرار: fill = إصلاح 24 صورة بديلة في كل دورة (الافتراضي) / all = إعادة رسم كل الصور / none = لا شيء'
         type: choice
-        default: none
-        options: [none, fill, all]
+        default: fill
+        options: [fill, all, none]
 
 permissions:
   contents: write
@@ -33,14 +33,14 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      - run: pip install pillow
-      - name: Install Google Gen AI SDK (github.com/googleapis/js-genai) outside the repository
+      - run: pip install pillow edge-tts imageio-ffmpeg internetarchive
+      - name: تثبيت حزمة Google Gen AI لتوليد القصص (خارج المستودع)
         run: |
           mkdir -p "$RUNNER_TEMP/genai"
           npm install --prefix "$RUNNER_TEMP/genai" --no-package-lock --no-audit --no-fund @google/genai
           echo "GENAI_DIR=$RUNNER_TEMP/genai" >> "$GITHUB_ENV"
           echo "NODE_PATH=$RUNNER_TEMP/genai/node_modules" >> "$GITHUB_ENV"
-      - name: Generate articles and build site
+      - name: كتابة قصص مملكة الأسرار وبناء الصفحات
         id: generation
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -67,11 +67,26 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           IMAGE_PROVIDERS: 'gemini,cloudflare,together,hfspace,genai,openai'
           GENAI_IMAGE_MODEL: ${{ vars.GENAI_IMAGE_MODEL }}
-          MAX_PER_RUN: ${{ github.event.inputs.count || '6' }}
+          # مصنع القصص والأفلام: video_factory.py يُستدعى داخل fetch_news.py (بلا خطوة منفصلة).
+          # ملف MP4 يُرفع إلى Internet Archive ولا يُخزَّن داخل المستودع؛ صور المشاهد images/story-<id>-scene-<n>.webp تبقى هنا.
+          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
+          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+          IA_COLLECTION: ${{ vars.IA_COLLECTION }}
+          IA_IDENTIFIER_PREFIX: ${{ vars.IA_IDENTIFIER_PREFIX }}
+          EDGE_TTS_VOICE: ${{ vars.EDGE_TTS_VOICE }}
+          VIDEO_PER_RUN: ${{ vars.VIDEO_PER_RUN || '1' }}
+          VIDEO_MAX_MINUTES: ${{ vars.VIDEO_MAX_MINUTES || '20' }}
+          VIDEO_MAX_SCENES: ${{ vars.VIDEO_MAX_SCENES || '40' }}
+          VIDEO_FPS: ${{ vars.VIDEO_FPS || '24' }}
+          MAX_PER_RUN: ${{ github.event.inputs.count || '8' }}
           MIN_PER_CATEGORY: ${{ vars.MIN_PER_CATEGORY || '15' }}
           KEEP_PER_CATEGORY: ${{ vars.KEEP_PER_CATEGORY || '30' }}
-          # التشغيل التلقائي بلا صور (none) لأن البناء يرسم أي صورة ناقصة تلقائياً؛ اختر fill يدوياً عند الحاجة
-          REGEN_IMAGES: ${{ github.event.inputs.regen_images || 'none' }}
+          # fill يُترجم داخل الكود إلى svg: إصلاح محدود للصور البديلة في كل دورة
+          # إصلاح الصور البديلة تلقائياً في كل دورة: 24 صورة (الأحدث أولاً) حتى لا تبقى أي صورة مرسومة
+          REGEN_IMAGES: ${{ github.event.inputs.regen_images || 'fill' }}
+          HEAL_IMAGES: ${{ vars.HEAL_IMAGES || '24' }}
+          # إعادة صياغة 10 مقالات قديمة بأسلوب مملكة الأسرار (عناوين جديدة + تصحيح لغوي)
+          RESTYLE_ARCHIVE: ${{ vars.RESTYLE_ARCHIVE || '10' }}
           # بعد هذه المدة يتوقف التوليد ويُبنى الموقع ويُرفع ما جُهّز — فلا تُلغى دورة كاملة أبداً
           RUN_BUDGET_MIN: ${{ vars.RUN_BUDGET_MIN || '150' }}
           ADSENSE_CLIENT: ${{ vars.ADSENSE_CLIENT }}
@@ -79,27 +94,28 @@ jobs:
           NEWSLETTER_BUTTONDOWN: ${{ vars.NEWSLETTER_BUTTONDOWN }}
           CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
         run: python fetch_news.py
-      - name: Check site (links, images, core files)
+      - name: فحص صفحات القصص (الروابط والصور والملفات الأساسية)
         id: check
         if: ${{ !cancelled() }}
         run: python check_site.py
-      - name: AdSense pre-review audit (duplicates, blurry images, wrong sections)
+      - name: تدقيق جودة القصص (التكرار والصور الضبابية والتصنيفات الخاطئة)
         id: audit
         if: ${{ !cancelled() }}
         env:
           ADSENSE_MIN_PER_CATEGORY: ${{ vars.ADSENSE_MIN_PER_CATEGORY || '0' }}
         run: python adsense_audit.py
-      - name: Commit and push (conflict-proof)
+      - name: حفظ القصص والصفحات ورفعها (بدون تعارضات)
         if: ${{ !cancelled() && steps.check.outcome == 'success' && steps.audit.outcome == 'success' }}
         run: |
-          git config user.name "NexusPress-Bot"
+          git config user.name "KingdomSecrets-Bot"
           git config user.email "bot@users.noreply.github.com"
           # node_modules must never be committed (it was added by mistake before)
           grep -qx 'node_modules/' .gitignore 2>/dev/null || echo 'node_modules/' >> .gitignore
           git rm -r -q --cached node_modules 2>/dev/null || true
+          # git add -A يضيف صور المشاهد الجديدة images/story-*-scene-*.webp؛ ملفات MP4 لا تُخزَّن هنا بل تُرفع إلى Internet Archive
           git add -A
           if git diff --cached --quiet; then echo "nothing to commit"; exit 0; fi
-          git commit -m "نشر تلقائي: مقالات جديدة"
+          git commit -m "نشر تلقائي: قصص وأفلام جديدة"
           for i in 1 2 3 4; do
             git fetch origin main
             if ! git merge --no-edit -X ours origin/main; then
@@ -120,7 +136,7 @@ jobs:
               print("state merge skipped:", e)
           PY
             git add -A
-            git diff --cached --quiet || git commit -qm "دمج سجل الأخبار المستخدمة"
+            git diff --cached --quiet || git commit -qm "دمج سجل المقالات المستخدمة"
             if git push origin HEAD:main; then echo "pushed"; exit 0; fi
             echo "push failed, retry $i"; sleep $((i * 6))
           done

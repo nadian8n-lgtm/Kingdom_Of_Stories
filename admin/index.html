@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0b3c7a">
+<title>لوحة تحكم مملكة الأسرار</title>
+<style>
+:root{--navy:#0b3c7a;--ink:#12212f;--muted:#5b7286;--line:#d8e2ee;--bg:#eef3f8;--card:#fff;--ok:#0e7a4b;--warn:#a86000;--bad:#b3261e;--blue:#0b7fc4;--radius:12px}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font:15px/1.65 "Segoe UI",Tahoma,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+a{color:var(--blue)}
+.hidden{display:none!important}
+button{font:inherit;cursor:pointer}
+header#bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--navy);color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.15);flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700}
+.brand .logo{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:#fff;color:var(--navy);font-weight:800}
+.brand small{display:block;font-weight:400;font-size:11px;opacity:.8}
+.grow{flex:1}
+.btn{border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;border-radius:9px;padding:7px 11px;font-size:13px}
+.btn:hover{background:rgba(255,255,255,.16)}
+.btn.primary{background:#fff;color:var(--navy);font-weight:700}
+.btn.ok{background:#19a15f;border-color:#19a15f;color:#fff;font-weight:700}
+.btn.ok[disabled]{opacity:.45;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.small{font-size:12px;padding:4px 8px}
+.btn.wide{width:100%;margin-top:8px;padding:10px}
+.btn.tiny{padding:2px 7px;font-size:12px}
+.chip{font-size:12px;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.14);color:#fff;white-space:nowrap}
+.chip.ok{background:#19a15f}.chip.warn{background:#b97a00}.chip.bad{background:#c0392b}
+.panel{display:grid;grid-template-columns:230px 1fr;gap:14px;padding:14px;max-width:1280px;margin:0 auto}
+#side{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:8px;height:fit-content;position:sticky;top:64px}
+.cat{display:flex;justify-content:space-between;align-items:center;gap:6px;width:100%;background:transparent;border:0;border-radius:9px;padding:9px 10px;color:var(--ink);font-size:14px;text-align:right}
+.cat:hover{background:#eef4fb}
+.cat.active{background:var(--navy);color:#fff}
+.cat .cc{font-size:11px;background:#dbe7f3;color:#2b4a66;border-radius:999px;padding:1px 7px}
+.cat.active .cc{background:rgba(255,255,255,.22);color:#fff}
+.side-note{font-size:11px;color:var(--muted);padding:8px 6px;line-height:1.5}
+.main{min-width:0}
+.listhead{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px}
+.listhead h2{margin:0;font-size:19px}
+.q{border:1px solid var(--line);border-radius:9px;padding:7px 11px;min-width:220px;font:inherit;background:#fff}
+.dirty{margin:0 0 10px;background:#fff7e6;border:1px solid #f0c36b;color:#7a5200;border-radius:9px;padding:8px 11px;font-size:13px}
+.list{display:flex;flex-direction:column;gap:8px}
+.art{display:grid;grid-template-columns:34px 92px 1fr auto;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:8px}
+.ord{font-size:12px;color:var(--muted);text-align:center}
+.thumb{width:92px;height:62px;border-radius:8px;overflow:hidden;background:#e8eef6;display:grid;place-items:center;font-size:10px;color:var(--muted)}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.meta{min-width:0}
+.meta .t{font-weight:700;font-size:14px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.meta .t:hover{color:var(--blue);cursor:pointer}
+.meta .sub{font-size:11px;color:var(--muted);margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.badge{font-size:10px;border-radius:999px;padding:1px 7px;background:#e7f0fa;color:#28527a;border:1px solid #cfe0f0}
+.badge.manual{background:#e8f7ee;color:#0e7a4b;border-color:#bfe6cf}
+.badge.bad{background:#fdecea;color:#b3261e;border-color:#f6c6c3}
+.badge.warn{background:#fff4e0;color:#8a5a00;border-color:#f2d7a8}
+.acts{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-start}
+.acts button,.acts a{display:inline-grid;place-items:center;min-width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;font-size:14px;padding:0 6px}
+.acts button:hover,.acts a:hover{background:#eef4fb}
+.acts button[disabled]{opacity:.35;cursor:not-allowed}
+.empty{background:var(--card);border:1px dashed var(--line);border-radius:var(--radius);padding:28px;text-align:center;color:var(--muted)}
+.help{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;font-size:13px}
+.help summary{cursor:pointer;font-weight:700;color:#28527a}
+.help ol{margin:8px 0;padding-inline-start:20px}
+.help li{margin-bottom:5px}
+.gate{position:fixed;inset:0;background:linear-gradient(160deg,#0b3c7a,#0a2c56);display:grid;place-items:center;padding:18px;overflow:auto;z-index:50}
+.gate-card{width:min(470px,100%);background:#fff;border-radius:16px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.35)}
+.gate-logo{width:46px;height:46px;border-radius:12px;background:var(--navy);color:#fff;display:grid;place-items:center;font-size:22px;font-weight:800;margin-bottom:8px}
+.gate-card h1{font-size:19px;margin:0 0 4px}
+.muted{color:var(--muted);font-size:13px}
+label{display:block;font-size:13px;font-weight:600;margin:10px 0 0}
+input,textarea,select{width:100%;margin-top:4px;border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit;background:#fff;color:var(--ink)}
+textarea{resize:vertical}
+input:focus,textarea:focus,select:focus{outline:2px solid #cfe4f7;border-color:#8fc0e6}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.note{font-size:12px;color:#3d5568;background:#f2f7fc;border:1px solid #d6e6f5;border-radius:9px;padding:8px 10px;margin:10px 0}
+.errs{background:#fdecea;border:1px solid #f0b4ae;color:#8c1d15;border-radius:9px;padding:8px 11px;font-size:13px;margin:10px 0}
+.warns{background:#fff7e6;border:1px solid #f0c36b;color:#7a5200;border-radius:9px;padding:8px 11px;font-size:13px;margin:10px 0}
+.modal{position:fixed;inset:0;background:rgba(9,20,32,.55);display:grid;place-items:center;padding:14px;z-index:60;overflow:auto}
+.sheet{background:#fff;border-radius:14px;width:min(820px,100%);max-height:94vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.sheet-head{position:sticky;top:0;background:#fff;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);z-index:2}
+.sheet-head h3{margin:0;font-size:17px}
+.sheet-body{padding:12px 16px}
+.sheet-foot{position:sticky;bottom:0;background:#fff;display:flex;gap:8px;justify-content:flex-start;padding:12px 16px;border-top:1px solid var(--line)}
+.sheet-foot .btn{color:var(--ink);border-color:var(--line);background:#fff}
+.sheet-foot .btn.ok{background:#19a15f;color:#fff;border-color:#19a15f}
+fieldset{border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin:12px 0}
+legend{font-size:13px;font-weight:700;padding:0 6px;color:#28527a}
+.imgrow{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:start}
+.prev{width:150px;height:100px;border-radius:9px;background:#e8eef6;display:grid;place-items:center;overflow:hidden;font-size:11px;color:var(--muted)}
+.prev img{width:100%;height:100%;object-fit:cover}
+.imgctrl input[type=file]{padding:6px;background:#f7fafd}
+.chk{display:flex;align-items:center;gap:7px;font-weight:500;font-size:13px;margin-top:9px}
+.chk input{width:auto;margin:0}
+.wc{font-weight:500;font-size:11px;margin-inline-start:8px;padding:1px 7px;border-radius:999px;background:#eef4fb;color:#2b4a66}
+.wc.ok{background:#e8f7ee;color:#0e7a4b}.wc.warn{background:#fff4e0;color:#8a5a00}.wc.bad{background:#fdecea;color:#b3261e}
+.srcrow{display:grid;grid-template-columns:1fr 1.4fr auto;gap:6px;margin-bottom:6px}
+.tagrow{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px}
+.videobox{font-size:12px;background:#f7fafd;border:1px solid var(--line);border-radius:9px;padding:8px 10px;word-break:break-word}
+.videobox div{margin:2px 0}
+.mini{background:#fff;border-radius:14px;padding:18px;width:min(420px,100%);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.mini h3{margin:0 0 8px;font-size:16px}
+.mini .catpick{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0}
+#toasts{position:fixed;inset-inline-start:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;z-index:80;max-width:min(430px,90vw)}
+.toast{background:#12212f;color:#fff;border-radius:10px;padding:10px 13px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.toast.ok{background:#0e7a4b}.toast.bad{background:#a3271f}.toast.warn{background:#8a5a00}
+@media(max-width:860px){.panel{grid-template-columns:1fr}#side{position:static;display:grid;grid-template-columns:1fr 1fr;gap:4px}.side-note{grid-column:1/-1}.art{grid-template-columns:28px 72px 1fr}.thumb{width:72px;height:52px}.acts{grid-column:1/-1;justify-content:flex-end}.row2{grid-template-columns:1fr}.imgrow{grid-template-columns:1fr}.prev{width:100%;height:150px}}
+</style>
+</head>
+<body>
+
+<header id="bar" class="hidden">
+  <div class="brand"><span class="logo">ن</span><div><b>مملكة الأسرار</b><small>لوحة التحكم</small></div></div>
+  <div class="grow"></div>
+  <span id="stat" class="chip">…</span>
+  <button id="bNew" class="btn primary">+ قصة جديدة</button>
+  <button id="bSave" class="btn ok" disabled>حفظ ونشر</button>
+  <button id="bReload" class="btn" title="إعادة التحميل من GitHub">↻ تحديث</button>
+  <button id="bSet" class="btn" title="الإعدادات والنسخ الاحتياطي">⚙</button>
+  <button id="bLock" class="btn" title="قفل اللوحة">🔒</button>
+</header>
+
+<main id="panel" class="panel hidden">
+  <aside id="side"></aside>
+  <section class="main">
+    <div class="listhead">
+      <h2 id="hCat">—</h2>
+      <input id="q" class="q" type="search" placeholder="ابحث في هذا القسم…">
+    </div>
+    <div id="dirty" class="dirty hidden">لديك تعديلات غير محفوظة — اضغط «حفظ ونشر» لتطبيقها على الموقع.</div>
+    <div id="list" class="list"></div>
+    <details class="help">
+      <summary>كيف تعمل اللوحة؟ (اقرأ مرة واحدة)</summary>
+      <ol>
+        <li>كل تغيير (كتابة، تعديل، حذف، تغيير ترتيب أو قسم) يبقى في هذه الصفحة حتى تضغط <b>«حفظ ونشر»</b>، فيُرفع إلى GitHub دفعة واحدة.</li>
+        <li>بعد الحفظ تُطلق اللوحة workflow اسمه <b>مملكة الأسرار — إعادة بناء القصص</b> يبني الصفحات ويحدّثها خلال 1–3 دقائق. لا تُغلق الصفحة أثناء الرفع فقط.</li>
+        <li>المقال المكتوب هنا يأخذ علامة <b>«يدوي»</b>، فلا يستطيع البوت حذفه ولا نقله إلى قسم آخر ولا تغيير مكانه.</li>
+        <li>تحريك أي مقال بالأسهم يثبّته أيضاً («يدوي») لأن نشر البوت يرتّب المقالات الآلية حسب التاريخ فقط.</li>
+        <li>الصورة: ارفع صورة من جهازك (تُضغط تلقائياً إلى WebP)، أو اتركها فارغة ليَرسم الباني رسماً توضيحياً أصلياً.</li>
+        <li>«نسيت الرمز» يمسح الإعدادات والمفتاح من هذا المتصفح، فتحتاج إلى مفتاح جديد. الحماية الحقيقية هي المفتاح، وليس الرمز.</li>
+        <li>كل القصص أعمال إبداعية من تأليف نكسوس، وأي تشابه مع الواقع محض صدفة. التزم بالسلامة العائلية: بلا عنف مصوّر أو دماء أو سبّ أو كراهية، وركن الأطفال أشدّ.</li>
+      </ol>
+    </details>
+  </section>
+</main>
+
+<div id="gate" class="gate">
+  <div class="gate-card">
+    <div class="gate-logo">ن</div>
+    <h1>لوحة تحكم مملكة الأسرار</h1>
+    <p class="muted">صفحة خاصة بصاحب مملكة الأسرار الشخصية: لا تُفهرس في محركات البحث ولا تُربط من أي صفحة، ولا يمكن فعل أي شيء فيها بدون مفتاح GitHub الخاص بك.</p>
+
+    <form id="setupForm" class="hidden">
+      <label>المستودع على GitHub<input id="sRepo" placeholder="owner/repo" dir="ltr" autocomplete="off" required></label>
+      <label>الفرع<input id="sBranch" value="main" dir="ltr" autocomplete="off"></label>
+      <label>المفتاح الخاص (Fine-grained token)<input id="sPat" type="password" dir="ltr" autocomplete="off" required></label>
+      <div class="note">أنشئ مفتاح GitHub Fine-grained مقصوراً على هذا المستودع وحده، بصلاحيات <b>Contents: Read and write</b> + <b>Actions: Read and write</b>، ومدة صلاحية <b>90 يوماً</b>. يُحفظ المفتاح في متصفحك فقط ولا يُرسل إلا إلى api.github.com. أنشئه من <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a>.</div>
+      <div class="row2">
+        <label>رمز الدخول (4–12 رقماً)<input id="sPin" type="password" inputmode="numeric" autocomplete="new-password" required></label>
+        <label>تأكيد الرمز<input id="sPin2" type="password" inputmode="numeric" autocomplete="new-password" required></label>
+      </div>
+      <div id="setupErr" class="errs hidden"></div>
+      <button class="btn ok wide" type="submit">حفظ والاتصال</button>
+      <button id="sForget" type="button" class="btn ghost wide">مسح الإعدادات المحفوظة</button>
+    </form>
+
+    <form id="lockForm" class="hidden">
+      <p id="lockWho" class="muted" dir="ltr"></p>
+      <label>رمز الدخول<input id="lPin" type="password" inputmode="numeric" autocomplete="off" required></label>
+      <div id="lockErr" class="errs hidden"></div>
+      <button class="btn ok wide" type="submit">دخول</button>
+      <button id="lForgot" type="button" class="btn ghost wide">نسيت الرمز (مسح المفتاح وإعادة الضبط)</button>
+    </form>
+  </div>
+</div>
+
+<div id="modal" class="modal hidden">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="edTitle">
+    <div class="sheet-head"><h3 id="edTitle">قصة جديدة</h3><button id="edClose" class="btn ghost tiny" type="button">✕</button></div>
+    <div class="sheet-body">
+      <div id="edErrs" class="errs hidden"></div>
+      <div id="edWarns" class="warns hidden"></div>
+      <label>العنوان<input id="fTitle" maxlength="115" placeholder="عنوان المقال بالعربية"></label>
+      <label>الملخص (يظهر في الرئيسية وقائمة المقالات)<textarea id="fSummary" rows="2" maxlength="320"></textarea></label>
+      <div class="row2">
+        <label>القسم<select id="fCat"></select></label>
+        <label>تاريخ النشر<input id="fDate" type="datetime-local"></label>
+      </div>
+      <div class="note">كل القصص أعمال إبداعية من تأليف نكسوس، وأي تشابه مع الواقع محض صدفة. يجب أن يبقى المحتوى آمناً للعائلات: بلا عنف مصوّر أو دماء أو سبّ أو كراهية، ولغة ركن الأطفال أبسط وأشدّ.</div>
+      <fieldset id="fTagsWrap" class="hidden">
+        <legend>وسوم الشكل والطول</legend>
+        <div id="fTags" class="tagrow">
+          <label class="chk"><input id="tagShort" type="checkbox"> #قصة_قصيرة — قراءة 5 إلى 10 دقائق</label>
+          <label class="chk"><input id="tagFlash" type="checkbox"> #ومضة_قصصية — أقل من دقيقتين</label>
+          <label class="chk"><input id="tagSerial" type="checkbox"> #سلسلة_حلقات — أجزاء متتابعة</label>
+          <label class="chk"><input id="tagInteractive" type="checkbox"> #قصة_تفاعلية — يختار القارئ النهاية</label>
+        </div>
+      </fieldset>
+      <label id="fHashtagsWrap">هاشتاغات قوية للنشر والبحث<input id="fHashtags" type="text" maxlength="300" placeholder="#قصص_قبل_النوم #حكاية_اليوم #قصص_واقعية"></label>
+      <small class="muted">افصل بينها بمسافة أو فاصلة. تظهر أسفل العنوان وفي بطاقة القصة، وتُضاف إلى فهرس البحث.</small>
+      <div id="fWarningWrap" class="hidden">
+        <label>تنبيه قصة الرعب النفسي<input id="fWarning" type="text" maxlength="200" placeholder="مثال: تحتوي هذه القصة على توتر نفسي..."></label>
+        <small class="muted">توتر وغموض نفسي فقط، بلا دماء أو تشريح أو عنف مصوّر.</small>
+      </div>
+      <fieldset id="fVideoWrap">
+        <legend>فيلم القصة (يُنشأ تلقائياً)</legend>
+        <div id="fVideo" class="videobox muted">لا يوجد فيلم لهذه القصة بعد.</div>
+        <small class="muted">هذه البيانات يُنشئها البوت تلقائياً ويُرفع الفيلم إلى Internet Archive؛ لا يمكن تعديلها يدوياً من هنا.</small>
+      </fieldset>
+      <fieldset>
+        <legend>الصورة</legend>
+        <div class="imgrow">
+          <div id="fPrev" class="prev">لا صورة</div>
+          <div class="imgctrl">
+            <input id="fFile" type="file" accept="image/*">
+            <label class="chk"><input id="fAuto" type="checkbox"> رسم توضيحي تلقائي (بلا صورة من جهازي)</label>
+            <label>حقوق الصورة / المصدر<input id="fCredit" value="نكسوس"></label>
+            <small class="muted">تُضغط الصورة تلقائياً إلى WebP بعرض 1600px. الحد الأدنى المقبول 640×320.</small>
+          </div>
+        </div>
+      </fieldset>
+      <label>نص القصة أو المقال <span id="fWords" class="wc">0 كلمة</span>
+        <textarea id="fBody" rows="14" placeholder="اكتب فقرات القصة، وافصل بين الفقرات بسطر فارغ.&#10;&#10;العناوين الفرعية تبدأ بـ ## . يظهر الحد المستحسن حسب القسم المختار."></textarea>
+      </label>
+      <small id="fHint" class="muted"></small>
+      <fieldset id="fSourcesWrap" class="hidden">
+        <legend>المصادر</legend>
+        <div id="fSources"></div>
+        <button id="fAddSrc" class="btn ghost small" type="button">+ مصدر</button>
+        <small class="muted">مطلوبة في المكتبة و«قراءات نكسوس» فقط: مصدر واحد على الأقل برابط http. المستحسن مصدران.</small>
+      </fieldset>
+      <label class="chk"><input id="fManual" type="checkbox" checked> تثبيت يدوي: يمنع البوت من تحريك المقال أو حذفه</label>
+    </div>
+    <div class="sheet-foot">
+      <button id="edSave" class="btn ok" type="button">حفظ التغييرات</button>
+      <button id="edCancel" class="btn ghost" type="button">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<div id="mover" class="modal hidden">
+  <div class="mini">
+    <h3>نقل المقال إلى قسم</h3>
+    <p class="muted">سيُوضع في أعلى القسم المختار ويُثبّت يدوياً.</p>
+    <div id="moveCats" class="catpick"></div>
+    <button id="moveCancel" class="btn ghost wide" type="button">إلغاء</button>
+  </div>
+</div>
+
+<div id="settings" class="modal hidden">
+  <div class="mini" style="max-width:520px">
+    <h3>الإعدادات والنسخ الاحتياطي</h3>
+    <label>المستودع<input id="gRepo" dir="ltr"></label>
+    <label>الفرع<input id="gBranch" dir="ltr"></label>
+    <label>اسم ملف إعادة البناء<input id="gWorkflow" dir="ltr"></label>
+    <label>مفتاح جديد (اتركه فارغاً للإبقاء على الحالي)<input id="gPat" type="password" dir="ltr" autocomplete="off"></label>
+    <label>رمز دخول جديد (اختياري)<input id="gPin" type="password" inputmode="numeric" autocomplete="new-password"></label>
+    <div id="setErr" class="errs hidden"></div>
+    <button id="gSave" class="btn ok wide" type="button">حفظ الإعدادات</button>
+    <button id="gBackup" class="btn ghost wide" type="button">تنزيل نسخة احتياطية من articles.json</button>
+    <button id="gWipe" class="btn ghost wide" type="button">مسح كل الإعدادات من هذا المتصفح</button>
+    <button id="gClose" class="btn ghost wide" type="button">إغلاق</button>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<script src="admin.js"></script>
+</body>
+</html>

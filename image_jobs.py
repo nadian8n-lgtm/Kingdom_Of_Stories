@@ -1,4 +1,4 @@
-"""On-demand image department: bridges the repository with an AI assistant session (chat agent).
+"""On-demand image helper for «مملكة الأسرار»: bridges the repository with an AI assistant session (chat agent).
 
 Why this exists
 ---------------
@@ -37,7 +37,7 @@ ARTICLES = ROOT / "articles.json"
 JOBS = ROOT / "image_jobs.json"
 GENERATED = ROOT / "generated"
 
-CATEGORIES = ("ar_local", "ar_cities", "ar_world", "ar_economy", "ar_tech", "ar_sports", "ar_arts", "ar_books")
+CATEGORIES = ("ar_world", "ar_economy", "ar_tech", "ar_sports", "ar_arts", "ar_books")
 PICTURE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 
 # The AdSense gate in adsense_audit.py rejects a picture that fails any of these. They are duplicated here so
@@ -52,14 +52,12 @@ TARGET_QUALITY = 88
 # Same visual language as fetch_news.build_prompt, duplicated so this file stays standalone
 # (fetch_news imports heavy modules the image bridge does not need).
 IMG_STYLE = {
-    "ar_local": "documentary photography, authentic everyday Moroccan scene",
-    "ar_cities": "investigative photojournalism, Moroccan street at night, police tape and city lights in the background, tense atmosphere",
-    "ar_world": "photojournalism, wide dramatic news photograph",
-    "ar_economy": "business photojournalism, markets, ports, factories or city skyline",
-    "ar_tech": "modern technology editorial photograph, clean futuristic atmosphere",
-    "ar_sports": "dynamic sports photography, stadium energy, motion",
-    "ar_arts": "cultural editorial photography, rich colour and atmosphere",
-    "ar_books": "editorial still-life photograph of books and a laptop on a desk, warm library light, no people",
+    "ar_world": "thoughtful editorial illustration, wide conceptual composition",
+    "ar_economy": "clean editorial illustration, markets, charts or abstract finance motifs",
+    "ar_tech": "modern technology illustration, clean futuristic atmosphere",
+    "ar_sports": "dynamic sports illustration, stadium energy and motion",
+    "ar_arts": "cultural illustration, rich colour and atmosphere",
+    "ar_books": "illustrated still-life of books and a laptop on a desk, warm library light, no people",
 }
 ANGLES = ["wide establishing shot", "low-angle shot", "aerial drone view", "intimate close-up of a telling object",
           "shot from behind a silhouette", "symmetrical centered composition", "telephoto compressed perspective",
@@ -260,8 +258,8 @@ def _apply_one(index, art_id, src, force=False):
 
     a["image"] = rel
     a["image_kind"] = "ai"
-    a["image_credit"] = {"source": "AI", "author": "Nexus Press",
-                         "license": "image generated for Nexus Press", "kind": "ai"}
+    a["image_credit"] = {"source": "AI", "author": "نكسوس",
+                         "license": "image generated for مملكة الأسرار", "kind": "ai"}
     if not a.get("image_alt"):
         a["image_alt"] = a.get("title", "")
     a["regen"] = True

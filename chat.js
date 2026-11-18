@@ -1,4 +1,4 @@
-/* Nexus Press - learning assistant (engine: Puter.js, https://js.puter.com/v2/ ; loaded only when the visitor sends a message) */
+/* مملكة الأسرار - مساعد التعلّم (engine: Puter.js, https://js.puter.com/v2/ ; loaded only when the visitor sends a message) */
 (function () {
   'use strict';
   var box = document.getElementById('ai-chat');
@@ -6,8 +6,8 @@
   var msgs = document.getElementById('ai-msgs'), form = document.getElementById('ai-form'),
       input = document.getElementById('ai-input'), note = document.getElementById('ai-note');
   var hist = [], busy = false, last = 0, loading = null;
-  var SYSTEM = 'أنت مساعد تعليمي لموقع نكسوس بريس في قسم أكاديمية الذكاء الاصطناعي. أجب بالعربية بوضوح وإيجاز وبأمثلة بسيطة، ' +
-    'وبشيفرة بايثون قصيرة عند الحاجة. لا تتحدث عن أخبار عاجلة ولا تقدم نصائح طبية أو قانونية أو مالية. إذا لم تعرف الجواب فقل ذلك صراحة.';
+  var SYSTEM = 'أنت مساعد تعليمي لمملكة الأسرار الشخصية في قسم أكاديمية الذكاء الاصطناعي. أجب بالعربية بوضوح وإيجاز وبأمثلة بسيطة، ' +
+    'وبشيفرة بايثون قصيرة عند الحاجة. اقتصر على التعلّم ولا تقدم نصائح طبية أو قانونية أو مالية. إذا لم تعرف الجواب فقل ذلك صراحة.';
 
   function say(t, ok) { note.textContent = t || ''; note.className = 'form-msg ' + (ok ? 'ok' : 'err'); }
   function add(role) {

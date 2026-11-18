@@ -1,7 +1,13 @@
-"""Builds the whole static site from articles.json.
+"""Builds the whole static Arabic story blog «مملكة الأسرار» from articles.json.
 
-Outputs: index.html, category-<key>.html, articles/<id>.html, about/contact/privacy-policy,
-weather.html, search.html, search.json, feed.xml, sitemap.xml, robots.txt, manifest.webmanifest, sw.js
+Outputs: index.html, hub-stories.html, hub-kids.html, flashes.html,
+category-<key>.html (13), articles/<id>.html, about/contact/privacy-policy/editorial-policy/
+terms/disclaimer, ai-academy.html, weather.html, search.html, search.json, feed.xml,
+sitemap.xml, robots.txt, manifest.webmanifest, sw.js.
+
+«مملكة الأسرار» is a family-safe creative story blog written by نكسوس. There is no news,
+no newsroom, no sources for fiction and no comments. Every story is an original creative
+work and any resemblance to reality is purely coincidental.
 """
 import html
 import json
@@ -12,11 +18,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import ai_hub
-import cities
 import legal
+try:
+    import style_guide
+except Exception:          # the site must still build if the module is missing
+    style_guide = None
 
 ROOT = Path(__file__).parent
-REPO = os.getenv("GITHUB_REPOSITORY", "")  # e.g. user/Nexus_Press (set automatically in Actions)
+REPO = os.getenv("GITHUB_REPOSITORY", "")  # e.g. user/nexus-blog (set automatically in Actions)
 SITE_URL = os.getenv("SITE_URL") or (
     f"https://{REPO.split('/')[0]}.github.io/{REPO.split('/')[1]}" if "/" in REPO else "")
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL") or "nadia.bouizgarne1@gmail.com"
@@ -24,32 +33,70 @@ ADSENSE_CLIENT = os.getenv("ADSENSE_CLIENT", "")  # ca-pub-XXXXXXXXXXXXXXXX afte
 # Newsletter: leave empty -> subscribers are e-mailed to CONTACT_EMAIL through FormSubmit.
 # Or set NEWSLETTER_BUTTONDOWN=<your buttondown username> to use Buttondown (it can e-mail feed.xml daily).
 NEWSLETTER_BUTTONDOWN = os.getenv("NEWSLETTER_BUTTONDOWN", "")
-# Google Apps Script web-app URL (Code.gs): comments + contact form + newsletter. Set it as GitHub variable NP_API.
+# Google Apps Script web-app URL (Code.gs): contact form + newsletter. Set it as GitHub variable NP_API.
 NP_API = os.getenv("NP_API", "").strip()
-POLL_NS = "np-" + (re.sub(r"[^a-z0-9]+", "-", REPO.lower()).strip("-") if REPO else "nexus-press")
+POLL_NS = "np-" + (re.sub(r"[^a-z0-9]+", "-", REPO.lower()).strip("-") if REPO else "nexus-blog")
 
+# Exactly the 13 sections of the story blog (SPEC §4).
 CATEGORIES = {
-    "ar_local": "أخبار المغرب",
-    "ar_cities": "أخبار المدن",
-    "ar_world": "الأخبار الدولية",
-    "ar_economy": "اقتصاد",
-    "ar_tech": "تكنولوجيا",
-    "ar_sports": "رياضة",
-    "ar_arts": "فن وثقافة",
+    "story_realistic": "واقعي وإنساني",
+    "story_mystery": "غموض وإثارة",
+    "story_scifi": "خيال علمي وتكنولوجيا",
+    "story_fantasy": "فانتازيا ومغامرات",
+    "story_horror": "رعب نفسي",
+    "story_history": "تاريخي وثقافي",
+    "story_comedy": "كوميديا وسخرية",
+    "kids_3_6": "براعم الصغار (3-6 سنوات)",
+    "kids_7_10": "مغامرو المستقبل (7-10 سنوات)",
+    "kids_11_14": "يافعون ومراهقون (11-14 سنة)",
+    "ar_tech": "تقنية (قراءة رأي)",
+    "ar_arts": "فن وثقافة (قراءة رأي)",
     "ar_books": "المكتبة الرقمية المجانية",
 }
-# Moroccan outlets are not used as sources in the international sections (Morocco is covered through Google Trends).
-# Exceptions: «أخبار المغرب» is Morocco news by definition, «أخبار المدن» is local crime/security news that only the
-# national press reports, and «رياضة» covers the national team and the Botola, which the local sports press reports
-# first; sources are always cited under the article.
-MOROCCAN_OK_CATS = {"ar_local", "ar_cities", "ar_sports"}
-MOROCCAN_HOSTS = ("hespress", "le360", "hibapress", "alyaoum24", "medias24", "2m.ma", "snrt", "map.ma", "mapexpress",
-                  "barlamane", "goud.ma", "chouftv", "yabiladi", "lakome", "akhbarona", "assahifa", "almaghribtoday",
-                  "h24info", "lematin", "leconomiste", "telquel", "aujourdhui.ma", "bladi", "febrayer", "anfaspress",
-                  "kech24", "moroccoworldnews", "moroccotomorrow", "hespress", "lopinion.ma", "maroc.ma", "alaoual",
-                  "almassaa", "assabah", "rue20", "lesiteinfo", "challenge.ma", "ledesk", "elbotola", "arryadia",
-                  "hibapress", "tanja24", "bayanealyaoume", "sahraa", "alakhbar", "alakhbar.ma", "tanja24.com",
-                  "kech24.com", "barlamane.com", "alyaoum24.com", "anfaspress.com", "almaghribtoday.net")
+
+GROUP_STORIES = [k for k in CATEGORIES if k.startswith("story_")]
+GROUP_KIDS = [k for k in CATEGORIES if k.startswith("kids_")]
+GROUP_OPINION = ["ar_tech", "ar_arts"]
+
+WORD_HINTS = {k: "2000–5000 كلمة" for k in GROUP_STORIES}
+WORD_HINTS.update({k: "800–1500 كلمة" for k in GROUP_KIDS})
+WORD_HINTS.update({k: "800–1500 كلمة" for k in GROUP_OPINION})
+WORD_HINTS["ar_books"] = "كما كانت"
+
+# Non-clickable form/length chips on every story card (SPEC §6).
+TAG_LABELS = {
+    "short": "#قصة_قصيرة",
+    "flash": "#ومضة_قصصية",
+    "serial": "#سلسلة_حلقات",
+    "interactive": "#قصة_تفاعلية",
+}
+FLASH_TAGS = {"flash", "serial", "interactive"}
+AGE_BADGES = {
+    "kids_3_6": "3-6 سنوات",
+    "kids_7_10": "7-10 سنوات",
+    "kids_11_14": "11-14 سنة",
+}
+
+LITERARY_DISCLAIMER = "هذه القصة عمل إبداعي من تأليف نكسوس، وأي تشابه مع الواقع محض صدفة."
+HORROR_NOTICE = ('<aside class="story-warning"><b>تنبيه:</b> قصص الرعب النفسي تعتمد على التوتر '
+                 'والغموض فقط، بلا دماء أو تشريح، وهي مخصّصة للكبار الذين يحبّون الإثارة الهادئة.</aside>')
+
+# The top menu has exactly these five items (SPEC §5).
+NAV_ITEMS = (
+    ("index.html", "الرئيسية", "home"),
+    ("hub-stories.html", "عالم القصص", "hub-stories"),
+    ("hub-kids.html", "ركن الأطفال", "hub-kids"),
+    ("flashes.html", "الومضات والحلقات", "flashes"),
+    ("about.html", "عن المدونة", "about"),
+)
+
+# Old newspaper pages are removed on every rebuild; ar_tech/ar_arts are now valid opinion
+# sections and ar_books is a permanent story-blog page, so none of them is ever removed.
+STALE_FILES = (
+    "category-ar_local.html", "category-ar_cities.html", "category-ar_world.html",
+    "category-ar_economy.html", "category-ar_sports.html",
+)
+
 e = html.escape
 
 BOOKS_LEAD = ('<p class="city-lead">مكتبة رقمية مجانية بالكامل: كل مقال يختار لك خمسة كتب حقيقية للتعلّم الذاتي، '
@@ -57,25 +104,30 @@ BOOKS_LEAD = ('<p class="city-lead">مكتبة رقمية مجانية بالك�
               '<a href="https://github.com/EbookFoundation/free-programming-books" rel="nofollow noopener" target="_blank">'
               'Free Programming Books</a> المفتوح. لا اشتراك ولا دفع ولا ملفات مقرصنة.</p>')
 
+# Same mechanism as BOOKS_LEAD, for the two personal-opinion reading sections (SPEC §1/§4).
+OPINION_LEAD = ('<p class="city-lead">قراءات نكسوس في التقنية والفن والثقافة آراء شخصية هادئة تهدف إلى الفهم '
+                'والتعلّم، لا أخباراً ولا تقارير صحفية. ننسب الوقائع والأرقام إلى مصادرها، '
+                'ونعلّم الرأي بـ«رأي شخصي» أو «وجهة نظر».</p>')
+
 POLL_BANK = [
-    ("ما أكثر مجال إخباري تحرص على متابعته يوميًا؟", ["السياسة", "الاقتصاد", "التكنولوجيا", "الرياضة", "الفن والثقافة"]),
-    ("ما وسيلتك المفضلة لتلقي الأخبار؟", ["المواقع الإخبارية", "وسائل التواصل الاجتماعي", "التلفاز", "النشرات البريدية"]),
-    ("هل تثق في الأخبار المنتشرة على وسائل التواصل الاجتماعي؟", ["نعم غالبًا", "أحيانًا فقط", "نادرًا", "لا أثق بها"]),
-    ("ما رأيك في استخدام الذكاء الاصطناعي في إعداد الأخبار؟", ["أؤيده مع مراجعة بشرية", "أؤيده بالكامل", "أعارضه", "لا رأي لي"]),
-    ("كم من الوقت تقضيه يوميًا في متابعة الأخبار؟", ["أقل من 15 دقيقة", "من 15 إلى 30 دقيقة", "من 30 دقيقة إلى ساعة", "أكثر من ساعة"]),
-    ("ما الوقت الذي تفضّله لقراءة الأخبار؟", ["الصباح الباكر", "خلال النهار", "المساء", "قبل النوم"]),
-    ("أي أسلوب تفضّل في المقالات الإخبارية؟", ["الخبر المختصر", "المقال المعمّق", "التحليل مع الخلفية", "التقارير المصوّرة"]),
+    ("ما الجزء الذي تقرأه أولاً في مملكة الأسرار؟", ["قراءات دولية", "اقتصاد", "تقنية", "رياضة", "فن وثقافة"]),
+    ("أيّ الكتب المجانية تود أن تجدها في المكتبة؟", ["كتب التقنية", "كتب الأدب", "كتب التعلّم الذاتي", "كتب الأعمال"]),
+    ("كيف تفضّل أن تُكتب القراءات الدولية؟", ["رأي شخصي واضح", "سياق مختصر", "مقارنة بين المصادر", "سرد هادئ"]),
+    ("ما رأيك في استخدام الذكاء الاصطناعي في كتابة المقالات؟", ["أؤيده مع مراجعة بشرية", "أؤيده بالكامل", "أعارضه", "لا رأي لي"]),
+    ("كم مرة تزور المدونة؟", ["كل يوم", "بضع مرات في الأسبوع", "مرة في الأسبوع", "أول مرة"]),
+    ("ما الوقت الذي تفضّله للقراءة؟", ["الصباح الباكر", "خلال النهار", "المساء", "قبل النوم"]),
+    ("أي أسلوب تفضّل في مقالات المدونة؟", ["الفكرة المختصرة", "المقال المعمّق", "الرأي مع المصادر", "الصور والرسوم"]),
     ("ما الرياضة التي تتابعها أكثر؟", ["كرة القدم", "كرة السلة", "التنس", "رياضات أخرى"]),
-    ("هل تتابع أخبار الاقتصاد وأسواق المال بانتظام؟", ["نعم يوميًا", "أسبوعيًا", "نادرًا", "لا أتابعها"]),
-    ("ما المحتوى الذي تودّ أن نزيد منه في نكسوس بريس؟", ["الأخبار العاجلة", "التحليلات", "التحقيقات", "الفن والثقافة"]),
-    ("كيف تقيّم موقع نكسوس بريس؟", ["ممتاز", "جيد", "مقبول", "يحتاج إلى تحسين"]),
-    ("ما أكثر قضية تشغل العالم اليوم برأيك؟", ["الغلاء والاقتصاد", "المناخ والبيئة", "الذكاء الاصطناعي", "الأمن والسلام"]),
-    ("هل تفضّل قراءة الأخبار بالوضع الليلي؟", ["نعم دائمًا", "أحيانًا", "لا، أفضّل الوضع العادي"]),
-    ("أين تقرأ الأخبار غالبًا؟", ["على الهاتف", "على الحاسوب", "على الجهاز اللوحي", "حسب الظرف"]),
+    ("هل تهتم بقراءة تحليلات اقتصادية مبسّطة؟", ["نعم دائمًا", "أحيانًا", "نادرًا", "لا أهتم"]),
+    ("ما المحتوى الذي تودّ أن نزيد منه في المدونة؟", ["قراءات دولية", "مقالات تقنية", "فن وثقافة", "كتب مجانية"]),
+    ("كيف تقيّم مملكة الأسرار؟", ["ممتازة", "جيدة", "مقبولة", "تحتاج إلى تحسين"]),
+    ("أي موضوع يشغلك أكثر الآن؟", ["الذكاء الاصطناعي", "الاقتصاد", "المناخ", "الثقافة"]),
+    ("هل تفضّل القراءة بالوضع الليلي؟", ["نعم دائمًا", "أحيانًا", "لا، أفضّل الوضع العادي"]),
+    ("أين تقرأ المقالات غالبًا؟", ["على الهاتف", "على الحاسوب", "على الجهاز اللوحي", "حسب الظرف"]),
 ]
 
 
-SW_JS = """/* Nexus Press service worker: instant repeat visits + offline fallback */
+SW_JS = """/* مملكة الأسرار service worker: instant repeat visits + offline fallback */
 const V = 'np-__VERSION__';
 const CORE = ['./', 'style.css', 'site.js', 'tools.js', 'logo.webp'];
 self.addEventListener('install', e => {
@@ -113,12 +165,6 @@ def ad(pos, extra=""):
             '<script>(adsbygoogle=window.adsbygoogle||[]).push({});</script></div>')
 
 
-def is_moroccan(url="", publisher=""):
-    host = urllib.parse.urlparse(url).netloc.lower()
-    name = publisher.lower()
-    return host.endswith(".ma") or any(h in host or h in name.replace(" ", "") for h in MOROCCAN_HOSTS)
-
-
 def load():
     p = ROOT / "articles.json"
     data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
@@ -139,8 +185,7 @@ def load_poll():
         if d.get("id") == t and d.get("question") and 2 <= len(d.get("options", [])) <= 5:
             return {"id": t, "q": d["question"], "o": d["options"]}
     except Exception:
-            return (f'<div class="layout"><main><h1 class="block-title">{e(name)}</h1>{extra}<div class="grid">{cards}</div>{ad("middle")}</main>'
-                 f'{sidebar("", data, poll)}</div>')
+        pass
     q, o = POLL_BANK[datetime.now(timezone.utc).toordinal() % len(POLL_BANK)]
     return {"id": t, "q": q, "o": o}
 
@@ -202,10 +247,9 @@ def clean_thumbs(data):
 
 
 def ensure_images(data):
-    """Self-healing build step: an article must never point at a missing or SVG picture.
+    """Self-healing build step: a story must never point at a missing or SVG picture.
     If the file is absent (e.g. it was never generated or never pushed), we draw a real original
-    WebP illustration on the spot and write the repaired path + credit back to articles.json.
-    This is what turns the old red 'check_site.py: missing ...svg' failure into a green build."""
+    WebP illustration on the spot and write the repaired path + credit back to articles.json."""
     changed, repaired = False, 0
     for k, items in data.items():
         for a in items:
@@ -225,20 +269,25 @@ def ensure_images(data):
                 import illustrations
                 illustrations.save(stem, k, a.get("title", ""), out)
             except Exception as ex:
-                # Self-healing safety net: if illustrations.py is missing in the repo, draw a sharp geometric
-                # Pillow editorial artwork directly so the build never leaves a broken image or .svg placeholder.
+                # Safety net: if illustrations.py is missing, draw a sharp geometric
+                # Pillow illustration directly so the build never leaves a broken image.
                 try:
                     from PIL import Image, ImageDraw
                     import random
                     out.parent.mkdir(exist_ok=True)
                     r = random.Random(stem)
                     palettes = {
-                        "ar_local": ((11, 60, 122), (3, 105, 161), (125, 211, 252)),
-                        "ar_cities": ((154, 52, 18), (124, 45, 18), (253, 186, 116)),
-                        "ar_world": ((3, 105, 161), (7, 89, 133), (186, 230, 253)),
-                        "ar_economy": ((4, 120, 87), (6, 95, 70), (167, 243, 208)),
-                        "ar_tech": ((109, 40, 217), (76, 29, 149), (221, 214, 254)),
-                        "ar_sports": ((180, 83, 9), (120, 53, 15), (253, 230, 138)),
+                        "story_realistic": ((30, 64, 175), (30, 58, 138), (191, 219, 254)),
+                        "story_mystery": ((30, 41, 59), (15, 23, 42), (148, 163, 184)),
+                        "story_scifi": ((109, 40, 217), (76, 29, 149), (221, 214, 254)),
+                        "story_fantasy": ((5, 122, 85), (4, 95, 70), (167, 243, 208)),
+                        "story_horror": ((51, 15, 51), (30, 10, 35), (216, 180, 254)),
+                        "story_history": ((146, 64, 14), (120, 53, 15), (253, 230, 138)),
+                        "story_comedy": ((190, 24, 93), (131, 24, 67), (251, 207, 232)),
+                        "kids_3_6": ((2, 132, 199), (3, 105, 161), (224, 242, 254)),
+                        "kids_7_10": ((22, 163, 74), (21, 128, 61), (220, 252, 231)),
+                        "kids_11_14": ((124, 58, 237), (91, 33, 182), (237, 233, 254)),
+                        "ar_tech": ((14, 116, 144), (8, 84, 110), (165, 243, 252)),
                         "ar_arts": ((190, 24, 93), (131, 24, 67), (251, 207, 232)),
                         "ar_books": ((30, 64, 175), (30, 58, 138), (191, 219, 254)),
                     }
@@ -269,8 +318,8 @@ def ensure_images(data):
                     print(f"cannot draw a replacement picture for {a.get('id')}: {str(ex)[:120]} / {str(ex2)[:80]}")
                     continue
             a["image"] = f"images/{out.name}"
-            a["image_credit"] = {"source": "Nexus Press", "author": "Nexus Press",
-                                 "license": "original editorial illustration", "kind": "illustration"}
+            a["image_credit"] = {"source": "مملكة الأسرار", "author": "نكسوس",
+                                 "license": "original blog illustration", "kind": "illustration"}
             a["image_kind"] = "illustration"
             a.pop("cdn", None)
             changed, repaired = True, repaired + 1
@@ -294,14 +343,14 @@ def head(title, desc, pre, canonical="", image="", extra=""):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{e(title)}</title>
 <meta name="description" content="{e(desc)}">
-<meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(desc)}"><meta property="og:type" content="website"><meta property="og:site_name" content="نكسوس بريس"><meta name="twitter:card" content="summary_large_image">{og}{can}
+<meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(desc)}"><meta property="og:type" content="website"><meta property="og:site_name" content="مملكة الأسرار Kingdom Of Secrets"><meta name="twitter:card" content="summary_large_image">{og}{can}
 <script>try{{var t=localStorage.getItem('np-theme');if(t)document.documentElement.setAttribute('data-theme',t)}}catch(e){{}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap"></noscript>
 <meta name="theme-color" content="#0b3c7a">
 <link rel="manifest" href="{pre}manifest.webmanifest"><link rel="icon" type="image/png" href="{pre}icon-192.png"><link rel="apple-touch-icon" href="{pre}icon-192.png">
-<link rel="alternate" type="application/rss+xml" title="نكسوس بريس" href="{pre}feed.xml">
+<link rel="alternate" type="application/rss+xml" title="مملكة الأسرار Kingdom Of Secrets" href="{pre}feed.xml">
 <link rel="stylesheet" href="{pre}style.css">
 {extra}{ads}
 </head>"""
@@ -313,60 +362,132 @@ def HAS_DEALS():
 
 
 def live_categories(data):
-    """Every section is always visible in the header, the footer and the sitemap, even before its first
-    article, so the reader can see the full structure of the newspaper. Empty sections still get a
-    useful page (editorial note + city directory / book guide), never a blank screen."""
+    """All 13 sections always get a page (even when empty), so the reader sees the full structure."""
     return list(CATEGORIES)
 
 
 def header(pre, data, active):
-    ticker = "  •  ".join(a["title"] for k in CATEGORIES for a in data[k][:2]) or "نكسوس بريس — أخبار العالم على مدار الساعة"
-    items = ([("index.html", "الرئيسية", "home")] + [(f"category-{k}.html", CATEGORIES[k], k) for k in live_categories(data)]
-             + [("weather.html", "🌦️ الطقس والصلاة", "weather"), ("ai-academy.html", "🎓 أكاديمية AI", "ai")]
-             + ([("deals/index.html", "🛒 عروض أمازون", "deals")] if HAS_DEALS() else []))
-    nav = "".join(f'<li><a href="{pre}{u}"{" class=active" if active == key else ""}>{e(n)}</a></li>' for u, n, key in items)
+    nav = "".join(f'<li><a href="{pre}{u}"{" class=active" if active == key else ""}>{e(n)}</a></li>'
+                  for u, n, key in NAV_ITEMS)
     return f"""<body data-pre="{pre}" data-api="{e(NP_API)}">
 <div class="progress" id="progress"></div>
 <div class="top-bar notranslate"><div class="container flex">
-<span class="today"><span class="live">●</span> <span id="today">تحديث مستمر على مدار الساعة</span> <span class="last-up" id="last-up"></span></span>
+<span class="today"><span class="live">●</span> <span id="today">مدونة قصصية إبداعية آمنة للعائلات</span> <span class="last-up" id="last-up"></span></span>
 <div class="top-tools"><button class="icon-btn" id="theme-btn" type="button" aria-label="الوضع الليلي" title="الوضع الليلي">🌓</button>
 <div class="lang-box" translate="no"><span>🌐</span>
 <button class="lang-btn" data-l="ar">العربية</button>|<button class="lang-btn" data-l="fr">Français</button>|<button class="lang-btn" data-l="en">English</button></div></div>
 </div></div>
 <header class="main-header"><div class="container flex">
-<a href="{pre}index.html" class="notranslate logo"><img src="{pre}logo.webp" width="165" height="90" alt="Nexus Press"></a>
-<div class="header-tag">أخبار العالم لحظة بلحظة</div>
-<form class="hsearch" action="{pre}search.html" role="search"><input name="q" type="search" placeholder="ابحث في نكسوس بريس…" aria-label="بحث"><button type="submit" aria-label="بحث">🔍</button></form></div></header>
-<nav class="main-nav"><div class="container"><ul class="nav-menu">{nav}</ul></div></nav>
-<div class="breaking"><b>عاجل</b><div><span class="ticker">{e(ticker)}</span></div></div>"""
+<a href="{pre}index.html" class="notranslate logo"><img src="{pre}logo.webp" width="165" height="90" alt="مملكة الأسرار Kingdom Of Secrets"></a>
+<div class="header-tag">قصص إبداعية يكتبها نكسوس</div>
+<form class="hsearch" action="{pre}search.html" role="search"><input name="q" type="search" placeholder="ابحث في قصص المدونة…" aria-label="بحث"><button type="submit" aria-label="بحث">🔍</button></form></div></header>
+<nav class="main-nav"><div class="container"><ul class="nav-menu">{nav}</ul></div></nav>"""
 
 
 def footer(pre, data):
-    cats = "".join(f'<li><a href="{pre}category-{k}.html">{e(CATEGORIES[k])}</a></li>' for k in live_categories(data))
-    services = (f'<li><a href="{pre}weather.html">الطقس ومواقيت الصلاة</a></li>'
-                f'<li><a href="{pre}ai-academy.html">أكاديمية الذكاء الاصطناعي</a></li>'
-                + (f'<li><a href="{pre}deals/index.html">عروض أمازون</a></li>' if HAS_DEALS() else ""))
-    info = (f'<li><a href="{pre}about.html">من نحن</a></li>'
-            f'<li><a href="{pre}editorial-policy.html">سياسة التحرير</a></li>'
-            f'<li><a href="{pre}contact.html">اتصل بنا</a></li>'
-            f'<li><a href="{pre}privacy-policy.html">سياسة الخصوصية</a></li>'
-            f'<li><a href="{pre}terms.html">شروط الاستخدام</a></li><li><a href="{pre}feed.xml">RSS</a></li>')
+    """Exactly the three groups of SPEC §10, plus the fixed literary disclaimer."""
+    about_links = (f'<li><a href="{pre}about.html">عن المدونة</a></li>'
+                   f'<li><a href="{pre}disclaimer.html">إخلاء المسؤولية الأدبي</a></li>')
+    contact_links = (f'<li><a href="{pre}contact.html">اتصل بي / اقترح فكرة</a></li>'
+                     f'<li><a href="mailto:{e(CONTACT_EMAIL)}">{e(CONTACT_EMAIL)}</a></li>')
+    policy_links = (f'<li><a href="{pre}privacy-policy.html">سياسة الخصوصية</a></li>'
+                    f'<li><a href="{pre}editorial-policy.html">سياسة المحتوى وحقوق النشر</a></li>'
+                    f'<li><a href="{pre}terms.html">شروط الاستخدام</a></li>')
     return f"""<footer class="footer"><div class="container footer-grid">
-<div><h4>نكسوس بريس | Nexus Press</h4><p>جريدة إلكترونية تتابع أبرز أحداث العالم في السياسة والاقتصاد والتكنولوجيا والرياضة والثقافة.</p></div>
-<div><h4>الأقسام والخدمات</h4><ul>{cats}{services}</ul></div>
-<div><h4>معلومات</h4><ul>{info}</ul></div>
-</div><div class="footer-bottom">© {datetime.now().year} نكسوس بريس. جميع الحقوق محفوظة.</div></footer>
+<div><h4>من نحن وإخلاء المسؤولية</h4><ul>{about_links}</ul></div>
+<div><h4>تواصل معي / اقترح فكرة</h4><ul>{contact_links}</ul></div>
+<div><h4>سياسة الخصوصية وحقوق النشر</h4><ul>{policy_links}</ul></div>
+</div><div class="footer-bottom"><p class="literary-note">{e(LITERARY_DISCLAIMER)}</p>
+© {datetime.now().year} مملكة الأسرار Kingdom Of Secrets. جميع الحقوق محفوظة.</div></footer>
 <button class="to-top" id="to-top" type="button" aria-label="أعلى الصفحة">↑</button>
 <div id="google_translate_element" style="display:none"></div>
 <script src="{pre}site.js" defer></script>
 </body></html>"""
 
 
-def card(a, pre, cat, eager=False):
+def tag_key(raw):
+    """Canonical, CSS-safe key for a tag (accepts both keys and the Arabic labels)."""
+    t = re.sub(r"\s+", "_", str(raw or "").strip()).lstrip("#")
+    if t in TAG_LABELS:
+        return t
+    for key, label in TAG_LABELS.items():
+        if t == label.lstrip("#"):
+            return key
+    return re.sub(r"[^a-z0-9]+", "-", t.lower()).strip("-") or "other"
+
+
+def tag_chips(a):
+    """Plain (non-clickable) spans: <span class="tag tag-<key>">التسمية</span>."""
+    out = []
+    for raw in a.get("tags") or []:
+        key = tag_key(raw)
+        label = TAG_LABELS.get(key) or str(raw)
+        if not label.startswith("#"):
+            label = "#" + label
+        out.append(f'<span class="tag tag-{e(key)}">{e(label)}</span>')
+    return "".join(out)
+
+
+def hashtag_chips(a):
+    """Strong discovery hashtags from articles.json (non-clickable, escaped)."""
+    out = []
+    for raw in a.get("hashtags") or []:
+        h = str(raw).strip()
+        if not h:
+            continue
+        if not h.startswith("#"):
+            h = "#" + h
+        out.append(f'<span class="hashtag">{e(h)}</span>')
+    return "".join(out)
+
+
+def age_badge(cat):
+    label = AGE_BADGES.get(cat)
+    return f'<span class="badge age-badge">{e(label)}</span>' if label else ""
+
+
+def video_player(a, pre):
+    """Optional film from SPEC §7/§12. Returns '' when the story has no usable video dict."""
+    v = a.get("video")
+    if not isinstance(v, dict) or not v.get("url"):
+        return ""
+    poster = str(v.get("poster") or "").strip()
+    if poster and not poster.startswith(("http://", "https://")):
+        poster = pre + poster.lstrip("/")
+    url = str(v.get("url") or "").strip()
+    page = str(v.get("page") or "").strip()
+    detail = ["🎬 فيلم القصة"]
+    try:
+        seconds = int(v.get("seconds") or 0)
+        if seconds > 0:
+            detail.append(f"مدته {seconds // 60} دقيقة")
+    except (TypeError, ValueError):
+        pass
+    try:
+        scenes = int(v.get("scenes") or 0)
+        if scenes > 0:
+            detail.append(f"{scenes} مشهد")
+    except (TypeError, ValueError):
+        pass
+    link = (f' <a href="{e(page)}" rel="nofollow noopener" target="_blank">شاهد على Internet Archive</a>'
+            if page else "")
+    return (f'<div class="story-video"><video controls playsinline preload="metadata" poster="{e(poster)}">'
+            f'<source src="{e(url)}" type="video/mp4">'
+            'متصفحك لا يدعم تشغيل الفيديو (your browser does not support video).'
+            f'</video><p class="video-meta">{" — ".join(e(x) for x in detail)}.{link}</p></div>')
+
+
+def card(a, pre, cat, eager=False, extra=""):
     src, fb = img_src(a, pre, 480)
-    return (f'<a class="card" href="{pre}articles/{a["id"]}.html"><img loading="{"eager" if eager else "lazy"}" decoding="async" width="480" height="270" '
+    cls = "card" + (" " + extra.strip() if extra else "")
+    chips = tag_chips(a)
+    chips_html = f'<div class="tags">{chips}</div>' if chips else ""
+    hashes = hashtag_chips(a)
+    hashes_html = f'<div class="hashtags">{hashes}</div>' if hashes else ""
+    return (f'<a class="{cls}" href="{pre}articles/{a["id"]}.html"><img loading="{"eager" if eager else "lazy"}" decoding="async" width="480" height="270" '
             f'src="{e(src)}"{fb} alt="{e(a.get("image_alt", a["title"]))}">'
-            f'<div class="info"><span class="badge">{e(CATEGORIES[cat])}</span><h3>{e(a["title"])}</h3><p>{e(a["date"][:10])}</p></div></a>')
+            f'<div class="info"><span class="badge">{e(CATEGORIES[cat])}</span>{age_badge(cat)}<h3>{e(a["title"])}</h3>'
+            f'{chips_html}{hashes_html}<p>{e(a["date"][:10])}</p></div></a>')
 
 
 def newsletter(kind="box"):
@@ -378,7 +499,7 @@ def newsletter(kind="box"):
             '<input type="email" name="email" placeholder="بريدك الإلكتروني" required autocomplete="email" aria-label="البريد الإلكتروني">'
             '<input type="text" name="_honey" tabindex="-1" autocomplete="off" style="display:none">'
             '<button class="btn" type="submit">اشترك الآن</button></form><p class="form-msg nl-msg" role="status"></p>')
-    txt = "اشترك الآن في النشرة البريدية لجريدة نكسوس بريس، لتصلك آخر الأخبار يوميًا"
+    txt = "اشترك في نشرة مملكة الأسرار لتصلك القصص الجديدة أولاً"
     if kind == "band":
         return f'<section class="nl-band"><div><h3>📬 النشرة البريدية</h3><p>{txt}.</p></div>{form}</section>'
     return f'<div class="widget nl-box"><h4>📬 النشرة البريدية</h4><p>{txt}.</p>{form}</div>'
@@ -397,13 +518,24 @@ def poll_widget(poll):
             f'<div class="poll-body"><p class="poll-q">{e(poll["q"])}</p></div></div>')
 
 
+def services_widget(pre):
+    """AI academy, weather, the free library and (when present) Amazon deals stay out of the top menu."""
+    items = [("ai-academy.html", "🎓 أكاديمية الذكاء الاصطناعي"),
+             ("weather.html", "🌦️ الطقس ومواقيت الصلاة"),
+             ("category-ar_books.html", "📚 المكتبة الرقمية المجانية")]
+    if HAS_DEALS():
+        items.append(("deals/index.html", "🛒 عروض أمازون"))
+    links = "".join(f'<li><a href="{pre}{u}">{e(n)}</a></li>' for u, n in items)
+    return f'<div class="widget services-box"><h4>🔎 استكشف مملكة الأسرار</h4><ul>{links}</ul></div>'
+
+
 def sidebar(pre, data, poll):
     latest = sorted((a for k in CATEGORIES for a in data[k]), key=lambda a: a["date"], reverse=True)[:8]
     lis = "".join(f'<li><span class="rank">{i}</span><a href="{pre}articles/{a["id"]}.html">{e(a["title"])}</a></li>' for i, a in enumerate(latest, 1))
-    return (f'<aside>{ad("side1")}{wx_mini()}{poll_widget(poll)}{newsletter()}'
+    return (f'<aside>{ad("side1")}{wx_mini()}{poll_widget(poll)}{newsletter()}{services_widget(pre)}'
             f'<div class="widget saved-box" id="saved-box"><h4>🔖 محفوظاتي</h4>'
-            '<ul class="saved-list"><li class="muted">اضغط «حفظ» على أي مقال ليظهر هنا وتقرأه لاحقًا.</li></ul></div>'
-            f'<div class="widget"><h4>🔥 عناوين الساعة</h4><ul>{lis or "<li>قريباً</li>"}</ul></div>'
+            '<ul class="saved-list"><li class="muted">اضغط «حفظ» على أي قصة لتظهر هنا وتقرأها لاحقًا.</li></ul></div>'
+            f'<div class="widget"><h4>📝 أحدث ما كُتب</h4><ul>{lis or "<li>قريباً</li>"}</ul></div>'
             f'{ad("side2", "sticky")}</aside>')
 
 
@@ -412,7 +544,7 @@ LINK_RX = re.compile(r"\[([^\]]{1,200})\]\((https?://[^)\s]+)\)")
 
 def inline_md(text):
     """Escapes everything, then turns ONLY safe http(s) Markdown links into real links.
-    Used by the book lists (the links come from the repository) and by the articles themselves."""
+    Used by the book lists (the links come from the repository) and by the stories themselves."""
     out, last = [], 0
     for m in LINK_RX.finditer(text):
         out.append(e(text[last:m.start()]))
@@ -423,7 +555,9 @@ def inline_md(text):
     return "".join(out)
 
 
-def render_body(content):
+def render_body(content, clean=True):
+    if style_guide and clean:
+        content = "\n\n".join(style_guide.clean_body(content, as_list=True))
     out, n = [], 0
     for block in re.split(r"\n\s*\n", content.strip()):
         block = block.strip()
@@ -443,28 +577,6 @@ def render_body(content):
     return "\n\n".join(out)
 
 
-COMMENT_RULES = """<div class="c-rules" role="note" aria-label="شروط النشر في التعليقات">
-<div class="c-rules-head"><span class="c-rules-ico">⚠️</span><b>شروط النشر في التعليقات</b><span class="c-rules-tag">يُرجى القراءة قبل المشاركة</span></div>
-<p>من شروط النشر بالتعليقات: عدم الإساءة للكاتب أو للأشخاص أو للمقدسات أو مهاجمة الأديان أو الذات الإلهية، والابتعاد عن التحريض العنصري والشتائم.</p>
-<p>الآراء الواردة في التعليقات تعبر عن آراء أصحابها وليس عن رأي <span dir="ltr">Nexus Press</span>.</p>
-<ul><li>تُحذف التعليقات المخالفة أو التي تحتوي تشهيراً أو اتهاماً بلا دليل أو خطاب كراهية أو دعوة إلى العنف.</li>
-<li>لا يُنشر البريد الإلكتروني مع التعليق، وتُمرّ التعليقات بمراجعة تحريرية قبل ظهورها.</li>
-<li>بإرسالك التعليق فأنت تُقرّ باحترام هذه الشروط وتتحمّل مسؤولية ما تكتبه.</li></ul></div>"""
-
-
-def comments_block(aid):
-    return f"""<section class="comments" id="comments" data-article="{e(aid)}"><h3>💬 التعليقات <span class="cm-count" id="cm-count"></span></h3>{COMMENT_RULES}
-<form class="cm-form notranslate" novalidate>
-<div class="cm-row"><input name="name" maxlength="40" placeholder="الاسم (يظهر مع تعليقك) *" required autocomplete="nickname">
-<input name="email" type="email" maxlength="80" placeholder="البريد الإلكتروني (اختياري، لا يُنشر)" autocomplete="email"></div>
-<textarea name="text" rows="4" maxlength="1000" placeholder="اكتب تعليقك هنا…" required></textarea>
-<input type="text" name="hp" tabindex="-1" autocomplete="off" style="display:none">
-<label class="cm-agree"><input type="checkbox" name="agree"> أوافق على شروط النشر أعلاه</label>
-<div class="cm-foot"><span class="cm-left" id="cm-left">1000</span><button class="btn" type="submit">أضف تعليقك</button></div>
-<p class="form-msg" id="cm-msg" role="status"></p></form>
-<div class="cm-list" id="cm-list"><p class="muted">جارٍ تحميل التعليقات…</p></div></section>"""
-
-
 def share_bar():
     return ('<div class="share notranslate"><span>شارك المقال:</span>'
             '<button type="button" data-net="whatsapp" class="s-wa">واتساب</button>'
@@ -478,28 +590,16 @@ def reading_time(text):
     return max(1, round(len(re.findall(r"\S+", text)) / 190))
 
 
-def city_chips(pre="", active="", city_pages=True):
-    """The list of Moroccan cities: visitors pick their city and get its own news page.
-    Before the first city story exists we link to the section itself (no empty city pages)."""
-    href = (lambda slug: f"{pre}city-{slug}.html") if city_pages else (lambda slug: f"{pre}category-ar_cities.html#city-{slug}")
-    return ('<nav class="city-chips" aria-label="اختر مدينتك">'
-            '<span class="city-chips-t">📍 اختر مدينتك:</span>'
-            + "".join(f'<a class="city-chip{" on" if slug == active else ""}" href="{href(slug)}">{e(name)}</a>'
-                      for name, slug, region in cities.CITIES) + "</nav>")
-
-
-def city_panel(name, region, count):
-    return (f'<div class="city-hero"><div><span class="city-kicker">🏙️ أخبار المدن</span>'
-            f'<h1>{e(name)}</h1><p class="city-region">جهة {e(region)} · {count} مقال منشور · حوادث وأمن وقضايا ومدينة</p></div>'
-            '<div class="city-hero-ico" aria-hidden="true">🏙️</div></div>')
-
-
 def shell(title, desc, pre, canonical, data, active, inner, poll, extra_head="", image=""):
     return (head(title, desc, pre, canonical, image, extra_head) + header(pre, data, active)
             + f'<div class="container">{ad("top")}{inner}{ad("bottom")}</div>' + footer(pre, data))
 
 
 # ----------------------------------------------------------------------------- build
+def write_page(name, title, desc, pre, canonical, data, active, inner, poll, extra_head="", image=""):
+    (ROOT / name).write_text(shell(title, desc, pre, canonical, data, active, inner, poll, extra_head, image), encoding="utf-8")
+
+
 def build():
     data = load()
     ensure_images(data)
@@ -509,144 +609,181 @@ def build():
     for old in (ROOT / "articles").glob("*.html"):
         old.unlink()
     live = live_categories(data)
-    if not data["ar_cities"]:
-        for _, s, _ in cities.CITIES:
-            (ROOT / f"city-{s}.html").unlink(missing_ok=True)
-    urls = (["index.html"] + [f"category-{k}.html" for k in live]
-            + (["city-" + s + ".html" for _, s, _ in cities.CITIES] if data["ar_cities"] else [])
+    # Stale newspaper pages must disappear from the published blog even after an old upload.
+    # category-ar_books.html is a permanent story-blog page and is never deleted.
+    for stale in STALE_FILES:
+        (ROOT / stale).unlink(missing_ok=True)
+    for stale in ROOT.glob("city-*.html"):
+        stale.unlink()
+    urls = (["index.html", "hub-stories.html", "hub-kids.html", "flashes.html"]
+            + [f"category-{k}.html" for k in live]
             + ["weather.html", "search.html", "about.html", "contact.html", "privacy-policy.html",
-               "editorial-policy.html", "terms.html", "ai-academy.html"])
+               "editorial-policy.html", "terms.html", "disclaimer.html", "ai-academy.html"])
     allart = sorted(((k, a) for k in CATEGORIES for a in data[k]), key=lambda t: t[1]["date"], reverse=True)
-    for k, a in allart:  # never show Moroccan outlets as a source, except in «أخبار المدن» (local press is the source)
-        if k not in MOROCCAN_OK_CATS:
-            a["sources"] = [s for s in a.get("sources", []) if not is_moroccan(s.get("url", ""), s.get("publisher", ""))]
     clean_thumbs(data)
 
-    # ---- home
-    top = allart[:5]
-    if top:
-        slides = ""
-        for i, (k, a) in enumerate(top):
-            active = " active" if i == 0 else ""
-            img_attr = ' fetchpriority="high"' if i == 0 else ' loading="lazy"'
-            slides += (f'<a class="slide{active}" href="articles/{a["id"]}.html">'
-                       f'<img src="{e(img_src(a, "", 1000)[0])}"{img_src(a, "", 1000)[1]} width="1000" height="520" alt="{e(a.get("image_alt", a["title"]))}"{img_attr}>'
-                       f'<div class="cap"><span class="hot">🔥 رائج</span><span class="badge">{e(CATEGORIES[k])}</span><h2>{e(a["title"])}</h2></div></a>')
-        dots = "".join(f'<span class="dot{" on" if i == 0 else ""}"></span>' for i in range(len(top)))
-        hero = f'<div class="slider">{slides}<button class="nav" id="sl-prev" aria-label="السابق">›</button><button class="nav" id="sl-next" aria-label="التالي">‹</button><div class="dots">{dots}</div></div>'
+    # ---- home: «قصة الأسبوع» + the latest stories of every section + preserved widgets
+    story_items = [(k, a) for k in live if k in GROUP_STORIES for a in data[k]]
+    featured = next(((k, a) for k, a in story_items if a.get("featured") or a.get("manual")), None)
+    if featured is None and story_items:
+        featured = story_items[0]
+    if featured:
+        fk, fa = featured
+        featured_html = ('<section class="sect featured-wrap"><h2 class="block-title">✍️ قصة الأسبوع</h2>'
+                         + card(fa, "", fk, eager=True, extra=" featured") + '</section>')
     else:
-        hero = '<div class="slider"><div class="hero-fallback">جاري تجهيز أحدث الأخبار…</div></div>'
+        featured_html = ('<section class="sect featured-wrap"><h2 class="block-title">✍️ قصة الأسبوع</h2>'
+                         '<div class="empty">تظهر هنا أحدث قصة مختارة حين يبدأ النشر.</div></section>')
+
     sections, shown = "", 0
     for k in live:
         name = CATEGORIES[k]
         cards_html = "".join(card(a, "", k) for a in data[k][:6])
-        extra = ""
-        if k == "ar_cities":
-            extra = (city_chips("", city_pages=bool(data["ar_cities"])) +
-                     '<p class="city-lead">حوادث، جرائم، قضايا، أمن ومدن: تابع ما يقع في مدينتك، مع ذكر المصادر في أسفل كل مقال.</p>')
-        elif k == "ar_books":
-            extra = BOOKS_LEAD
+        extra = OPINION_LEAD if k in GROUP_OPINION else (BOOKS_LEAD if k == "ar_books" else "")
+        hint = f'<p class="word-hint">📏 {e(WORD_HINTS[k])}</p>'
         if not data[k]:
-            cards_html = ('<div class="empty">قسم «' + e(name) + '» جاهز: يبدأ النشر فيه مع أول المواد المؤكدة، '
-                          f'ويمكنك تصفح القسم من <a class="badge" href="category-{k}.html">هنا ←</a>.</div>')
-        more_link = f'<p class="more"><a class="badge" href="category-{k}.html">كل مقالات {e(name)} ←</a></p>'
-        sections += f'<section class="sect"><h2 class="block-title">{e(name)}</h2>{extra}<div class="grid">{cards_html}</div>{more_link}</section>'
+            cards_html = ('<div class="empty">جزء «' + e(name) + '» جاهز: يبدأ النشر فيه مع أول قصة، '
+                          f'ويمكنك تصفحه من <a class="badge" href="category-{k}.html">هنا ←</a>.</div>')
+        more_link = f'<p class="more"><a class="badge" href="category-{k}.html">كل قصص {e(name)} ←</a></p>'
+        sections += (f'<section class="sect"><h2 class="block-title">{e(name)}</h2>{hint}{extra}'
+                     f'<div class="grid">{cards_html}</div>{more_link}</section>')
         shown += 1
         if shown == 2:
             sections += newsletter("band")
         if shown % 2 == 0:
             sections += ad("middle")
-    if not sections:
-        sections = '<div class="empty">لا توجد مقالات منشورة بعد.</div>'
-    inner = f'{hero}{ad("under_slider")}<div class="layout"><main>{sections}</main>{sidebar("", data, poll)}</div>'
-    (ROOT / "index.html").write_text(shell(
-        "نكسوس بريس | Nexus Press - أخبار العالم على مدار الساعة",
-        "جريدة نكسوس بريس: تغطية موسعة وتحليلات لأبرز الأخبار العالمية والعربية في السياسة والاقتصاد والتكنولوجيا والرياضة والثقافة.",
-        "", base + "/" if base else "", data, "home", inner, poll), encoding="utf-8")
+    services = ('<section class="sect services"><h2 class="block-title">🔎 المزيد في مملكة الأسرار</h2>'
+                + services_widget("") + '</section>')
+    inner = (f'{featured_html}{ad("under_slider")}<div class="layout"><main>{sections}{services}</main>'
+             f'{sidebar("", data, poll)}</div>')
+    write_page("index.html", "مملكة الأسرار Kingdom Of Secrets | قصص إبداعية",
+               "مملكة الأسرار: قصص إبداعية آمنة للعائلات في الواقعية والغموض والخيال والفانتازيا والرعب والتاريخ والكوميديا، وركن للأطفال ومكتبة رقمية مجانية.",
+               "", base + "/" if base else "", data, "home", inner, poll)
 
-    # ---- categories + articles
+    # ---- hub: عالم القصص (7 genre cards)
+    genre_cards = "".join(
+        f'<a class="card hub-card" href="category-{k}.html"><div class="info">'
+        f'<span class="badge">{e(WORD_HINTS[k])}</span><h3>{e(CATEGORIES[k])}</h3>'
+        f'<p>{len(data[k])} قصة متاحة</p></div></a>' for k in GROUP_STORIES)
+    inner = ('<div class="layout"><main><div class="page hub"><h1>عالم القصص</h1>'
+             '<p class="lead">سبعة تصنيفات أدبية يكتبها نكسوس لتقرأها وقت ما تشاء. '
+             f'{e(LITERARY_DISCLAIMER)}</p><div class="grid">{genre_cards}</div></div></main>'
+             f'{sidebar("", data, poll)}</div>')
+    write_page("hub-stories.html", "عالم القصص | مملكة الأسرار",
+               "التصنيفات الأدبية السبعة في مملكة الأسرار: واقعي وإنساني، غموض، خيال علمي، فانتازيا، رعب نفسي، تاريخي وكوميديا.",
+               "", f"{base}/hub-stories.html" if base else "", data, "hub-stories", inner, poll)
+
+    # ---- hub: ركن الأطفال (3 age cards with age badges)
+    age_cards = "".join(
+        f'<a class="card age-card" href="category-{k}.html"><div class="info">'
+        f'{age_badge(k)}<h3>{e(CATEGORIES[k])}</h3>'
+        f'<p>{len(data[k])} قصة مناسبة لعمر طفلك</p></div></a>' for k in GROUP_KIDS)
+    inner = ('<div class="layout"><main><div class="page hub"><h1>ركن الأطفال</h1>'
+             '<p class="lead">قصص بسيطة ورسائل إيجابية، مصنّفة حسب العمر، وبلا رعب أو عنف أو مواضيع ناضجة. '
+             f'{e(LITERARY_DISCLAIMER)}</p><div class="grid">{age_cards}</div></div></main>'
+             f'{sidebar("", data, poll)}</div>')
+    write_page("hub-kids.html", "ركن الأطفال | مملكة الأسرار",
+               "ثلاث فئات عمرية في ركن الأطفال: 3-6 سنوات، 7-10 سنوات، 11-14 سنة، بقصص آمنة ولغة بسيطة.",
+               "", f"{base}/hub-kids.html" if base else "", data, "hub-kids", inner, poll)
+
+    # ---- flashes: stories tagged flash / serial / interactive
+    flash_items = [(k, a) for k in live for a in data[k]
+                   if FLASH_TAGS.intersection(tag_key(t) for t in (a.get("tags") or []))]
+    flash_cards = "".join(card(a, "", k) for k, a in flash_items)
+    if not flash_cards:
+        flash_cards = '<div class="empty">لا تومضات أو حلقات منشورة بعد؛ تعود هذه الصفحة حين تظهر أول ومضة قصصية.</div>'
+    inner = ('<div class="layout"><main><div class="flashes"><h1>الومضات والحلقات</h1>'
+             '<p class="lead">قصص قصيرة جداً، وحلقات متتابعة، وقصص تختار فيها النهاية بنفسك. '
+             f'{e(LITERARY_DISCLAIMER)}</p><div class="grid">{flash_cards}</div></div></main>'
+             f'{sidebar("", data, poll)}</div>')
+    write_page("flashes.html", "الومضات والحلقات | مملكة الأسرار",
+               "القصص الومضية والمسلسلة والتفاعلية في مملكة الأسرار، حيث يختار القارئ النهاية.",
+               "", f"{base}/flashes.html" if base else "", data, "flashes", inner, poll)
+
+    # ---- category pages (13) + article pages
     for k in live:
         name = CATEGORIES[k]
-        cards = "".join(card(a, "", k) for a in data[k]) or '<div class="empty">لا توجد مقالات في هذا القسم بعد.</div>'
-        extra = ""
-        if k == "ar_cities":
-            extra = (city_chips("", city_pages=bool(data["ar_cities"])) +
-                     '<p class="city-lead">قسم مخصص لكل ما يقع في مدن المملكة: الحوادث والجرائم والقضايا '
-                     'والأمن والتحقيقات، بأسلوب صحفي معمّق ومع ذكر المصادر. اختر مدينتك لتقرأ أخبارها وحدها.</p>'
-                     + ("" if data["ar_cities"] else
-                        '<div class="empty">لا توجد بعد أخبار مدن مؤكدة تستحق النشر. نفضّل الانتظار على نشر خبر ناقص أو '
-                        'غير موثق، وستظهر تغطية كل مدينة هنا فور توفرها.</div>'))
-        elif k == "ar_books":
-            extra = BOOKS_LEAD + ("" if data["ar_books"] else
-                                  '<div class="empty">قوائم الكتب تُبنى آلياً من مستودع Free Programming Books؛ '
-                                  'تظهر هنا فور اكتمال أول قائمة من خمسة كتب حقيقية.</div>')
-        inner = (f'<div class="layout"><main><h1 class="block-title">{e(name)}</h1>{extra}<div class="grid">{cards}</div>{ad("middle")}</main>'
-                 f'{sidebar("", data, poll)}</div>')
-        (ROOT / f"category-{k}.html").write_text(shell(f"{name} | نكسوس بريس", f"آخر مقالات قسم {name} في جريدة نكسوس بريس.", "",
-                                                      f"{base}/category-{k}.html" if base else "", data, k, inner, poll), encoding="utf-8")
+        cards = "".join(card(a, "", k) for a in data[k]) or '<div class="empty">لا توجد قصص في هذا الجزء بعد.</div>'
+        hint = f'<p class="word-hint">📏 عدد الكلمات: {e(WORD_HINTS[k])}</p>'
+        extra = OPINION_LEAD if k in GROUP_OPINION else (BOOKS_LEAD if k == "ar_books" else "")
+        if k == "ar_books" and not data[k]:
+            extra += ('<div class="empty">قوائم الكتب تُبنى آلياً من مستودع Free Programming Books؛ '
+                      'تظهر هنا فور اكتمال أول قائمة من خمسة كتب حقيقية.</div>')
+        warning = HORROR_NOTICE if k == "story_horror" else ""
+        inner = (f'<div class="layout"><main><h1 class="block-title">{e(name)}</h1>{hint}{warning}{extra}'
+                 f'<div class="grid">{cards}</div>{ad("middle")}'
+                 f'<p class="literary-note">{e(LITERARY_DISCLAIMER)}</p></main>{sidebar("", data, poll)}</div>')
+        write_page(f"category-{k}.html", f"{name} | مملكة الأسرار",
+                   f"قصص {name} في مملكة الأسرار. {LITERARY_DISCLAIMER}", "",
+                   f"{base}/category-{k}.html" if base else "", data, k, inner, poll)
+
         for a in data[k]:
-            src = "".join(f'<li><a href="{e(s["url"])}" rel="nofollow noopener" target="_blank">{e(s.get("publisher", s["url"]))}</a></li>' for s in a["sources"])
-            src_html = (f'<div class="sources"><b>📚 المصادر والمراجع:</b><p class="src-hint">اعتمد هذا المقال على المواد التالية، '
-                        f'وأُعيدت صياغتها بالكامل بأسلوب هيئة التحرير.</p><ul>{src}</ul></div>') if src else ""
+            chips = tag_chips(a)
+            tags_block = f'<div class="tags">{chips}</div>' if chips else ""
+            hashes = hashtag_chips(a)
+            hashtags_block = f'<div class="hashtags">{hashes}</div>' if hashes else ""
+            video_html = video_player(a, "../")
+            opinion_note = OPINION_LEAD if k in GROUP_OPINION else ""
+            warning_html = (f'<aside class="story-warning"><b>تنبيه:</b> {e(a["warning"])}</aside>'
+                            if a.get("warning") else "")
+            author_note = f'<aside class="author-note">{e(LITERARY_DISCLAIMER)}</aside>'
+            src_html = ""
+            if (k == "ar_books" or k in GROUP_OPINION) and a.get("sources"):
+                src = "".join(f'<li><a href="{e(s["url"])}" rel="nofollow noopener" target="_blank">{e(s.get("publisher", s["url"]))}</a></li>'
+                              for s in a["sources"])
+                src_intro = ("مراجع هذه المقالة من المكتبة الرقمية المجانية، مع ذكر المصدر عند أي اقتباس."
+                             if k == "ar_books" else
+                             "قراءة رأي شخصية ليست عملاً صحفياً: الوقائع والأرقام مسندة إلى مصادرها، والرأي معلَّم بـ«رأي شخصي» أو «وجهة نظر».")
+                src_html = (f'<div class="sources"><b>📚 المصادر والمراجع:</b><p class="src-hint">{src_intro}</p><ul>{src}</ul></div>')
             rel_pool = [x for x in data[k] if x["id"] != a["id"]]
-            if a.get("city"):
-                same_city = [x for x in rel_pool if x.get("city") == a["city"]]
-                rel_pool = same_city + [x for x in rel_pool if x not in same_city]
             related = "".join(card(r, "../", k) for r in rel_pool[:3])
-            city_crumb = (f' › <a href="../city-{a["city_slug"]}.html">{e(a["city"])}</a>' if a.get("city_slug") else "")
-            city_badge = (f'<span class="badge city-badge">📍 {e(a["city"])}</span> ' if a.get("city") else "")
             url = f"{base}/articles/{a['id']}.html" if base else ""
             img_abs = cdn(a, 1200) or (f"{base}/{a['image']}" if base else a["image"])
-            ld = json.dumps({"@context": "https://schema.org", "@type": "NewsArticle", "headline": a["title"], "datePublished": a["date"],
-                             "image": [img_abs], "publisher": {"@type": "Organization", "name": "نكسوس بريس"},
-                             "author": {"@type": "Organization", "name": "هيئة تحرير نكسوس بريس"}}, ensure_ascii=False)
+            schema_type = "BlogPosting" if (k == "ar_books" or k in GROUP_OPINION) else "CreativeWork"
+            ld = json.dumps({"@context": "https://schema.org", "@type": schema_type, "headline": a["title"],
+                             "datePublished": a["date"], "image": [img_abs], "genre": name,
+                             "publisher": {"@type": "Organization", "name": "مملكة الأسرار"},
+                             "author": {"@type": "Person", "name": "نكسوس"}}, ensure_ascii=False)
             credit = a.get("image_credit") or {}
-            if credit.get("kind") == "illustration" or credit.get("source") == "Nexus Press":
-                credit_html = '<figcaption class="img-credit">رسم توضيحي أصلي — نكسوس بريس</figcaption>'
+            if credit.get("kind") == "illustration" or credit.get("source") in ("مملكة الأسرار", "نكسوس"):
+                credit_html = '<figcaption class="img-credit">رسم توضيحي أصلي — مملكة الأسرار</figcaption>'
             elif credit.get("kind") == "ai" or str(credit.get("source", "")).lower() in ("ai", "gemini", "openai", "cloudflare", "together", "hfspace", "genai"):
-                credit_html = '<figcaption class="img-credit">صورة توليدية أُنشئت خصيصاً لـ«نكسوس بريس»</figcaption>'
+                credit_html = '<figcaption class="img-credit">صورة توليدية أُنشئت خصيصاً لـ«مملكة الأسرار»</figcaption>'
             elif credit.get("source") or credit.get("author"):
                 credit_html = f'<figcaption class="img-credit">الصورة: {e(credit.get("author") or credit.get("source"))}</figcaption>'
             else:
                 credit_html = ""
             rt = reading_time(a["content"])
+            # Fiction keeps its author's voice: the news-oriented style cleaner is only used for the
+            # four preserved book articles when they are not explicitly marked manual.
+            clean = k == "ar_books" and not a.get("manual")
             inner = f"""<div class="layout"><main><article class="article">
-<nav class="crumbs" aria-label="مسار التصفح"><a href="../index.html">الرئيسية</a> › <a href="../category-{k}.html">{e(name)}</a>{city_crumb}</nav>
-{city_badge}<span class="badge">{e(name)}</span><h1>{e(a["title"])}</h1>
-<div class="meta">هيئة تحرير نكسوس بريس · {e(a["date"][:10])} · ⏱ {rt} د للقراءة</div>
+<nav class="crumbs" aria-label="مسار التصفح"><a href="../index.html">الرئيسية</a> › <a href="../category-{k}.html">{e(name)}</a></nav>
+<span class="badge">{e(name)}</span>{age_badge(k)}<h1>{e(a["title"])}</h1>
+<div class="meta">نكسوس · {e(a["date"][:10])} · ⏱ {rt} د للقراءة</div>
+{tags_block}
+{hashtags_block}
+{video_html}
+{opinion_note}
 {share_bar()}
+{warning_html}
+{author_note}
 {ad("article_top")}
 <figure class="hero-fig"><img class="hero" width="1000" height="563" fetchpriority="high" src="{e(img_src(a, "../", 1000)[0])}"{img_src(a, "../", 1000)[1]} alt="{e(a.get("image_alt", a["title"]))}">{credit_html}</figure>
 <div class="article-body">
 
-{render_body(a["content"])}
+{render_body(a["content"], clean=clean)}
 
-</div>{ad("article_bottom")}{share_bar()}{src_html}{newsletter("band")}{comments_block(a["id"])}</article>
-<section class="related"><h2 class="block-title">مقالات ذات صلة</h2><div class="grid">{related}</div></section></main>{sidebar("../", data, poll)}</div>"""
-            (ROOT / "articles" / f"{a['id']}.html").write_text(shell(
-                f'{a["title"]} | نكسوس بريس', a.get("summary", a["title"]), "../", url, data, k, inner, poll,
-                f'<script type="application/ld+json">{ld}</script>', img_abs), encoding="utf-8")
+</div>{ad("article_bottom")}{share_bar()}{src_html}{newsletter("band")}</article>
+<section class="related"><h2 class="block-title">قصص ذات صلة</h2><div class="grid">{related}</div></section></main>{sidebar("../", data, poll)}</div>"""
+            write_page(f"articles/{a['id']}.html", f'{a["title"]} | مملكة الأسرار', a.get("summary", a["title"]),
+                       "../", url, data, k, inner, poll,
+                       f'<script type="application/ld+json">{ld}</script>', img_abs)
             urls.append(f"articles/{a['id']}.html")
 
-    # ---- one page per Moroccan city (أخبار المدن): only once the section has real stories
-    for cname, cslug, cregion in (cities.CITIES if data["ar_cities"] else []):
-        items = [a for a in data["ar_cities"] if a.get("city") == cname]
-        cards = ("".join(card(a, "", "ar_cities") for a in items)
-                 or '<div class="empty">لا توجد أخبار منشورة عن هذه المدينة بعد. سنغطيها في أقرب دورة نشر.</div>')
-        city_inner = (f'<div class="layout"><main>{city_panel(cname, cregion, len(items))}{city_chips("", cslug)}'
-                      f'<div class="grid">{cards}</div>'
-                      '<p class="city-note">تُجمع أخبار المدن من الصحف الوطنية ومن ما تتداوله Google News، ويُذكر المصدر '
-                      'في أسفل كل مقال. كل متهم بريء حتى تثبت إدانته، ولا تُنشر أسماء الضحايا أو القاصرين.</p>'
-                      f'</main>{sidebar("", data, poll)}</div>')
-        (ROOT / f"city-{cslug}.html").write_text(shell(
-            f"أخبار {cname} | حوادث وأمن وقضايا | نكسوس بريس",
-            f"آخر أخبار {cname} (جهة {cregion}): الحوادث والجرائم والقضايا والأمن، مع ذكر المصادر.",
-            "", f"{base}/city-{cslug}.html" if base else "", data, "ar_cities", city_inner, poll), encoding="utf-8")
-
     # ---- AI academy (generated so the hourly quality gate never fails on a missing page)
-    (ROOT / "ai-academy.html").write_text(shell(
-        ai_hub.TITLE, ai_hub.DESC, "", f"{base}/ai-academy.html" if base else "", data, "ai",
-        ai_hub.body("chat.js"), poll), encoding="utf-8")
+    write_page("ai-academy.html", ai_hub.TITLE, ai_hub.DESC, "", f"{base}/ai-academy.html" if base else "",
+               data, "ai", ai_hub.body("chat.js"), poll)
 
     # ---- weather & prayer page, search page
     wx = """<div class="page wx-page notranslate"><h1>🌦️ الطقس ومواقيت الصلاة</h1>
@@ -654,28 +791,28 @@ def build():
 <div id="wx-app"><div class="wx-box"><input id="wx-q" type="search" placeholder="مثال: الرباط، مكة المكرمة، باريس، New York" autocomplete="off" aria-label="المدينة">
 <button class="wx-geo" id="wx-geo" type="button" title="استخدم موقعي">📍 موقعي</button><ul class="wx-sug" id="wx-sug"></ul></div>
 <div class="wx-chips" id="wx-chips"></div><div id="wx-out" aria-live="polite"></div></div></div>"""
-    (ROOT / "weather.html").write_text(shell(
-        "الطقس ومواقيت الصلاة حول العالم | نكسوس بريس", "حالة الطقس وتوقعات الأيام ومواقيت الصلاة لأي مدينة في العالم.",
-        "", f"{base}/weather.html" if base else "", data, "weather",
-        f'<div class="layout"><main>{wx}</main>{sidebar("", data, poll).replace(wx_mini(), "")}</div>', poll), encoding="utf-8")
+    write_page("weather.html", "الطقس ومواقيت الصلاة حول العالم | مملكة الأسرار",
+               "حالة الطقس وتوقعات الأيام ومواقيت الصلاة لأي مدينة في العالم.",
+               "", f"{base}/weather.html" if base else "", data, "weather",
+               f'<div class="layout"><main>{wx}</main>{sidebar("", data, poll).replace(wx_mini(), "")}</div>', poll)
     sr = ('<div class="page"><h1>🔍 البحث</h1><form class="search-big" action="search.html"><input id="sq" name="q" type="search" '
-          'placeholder="ابحث عن خبر أو موضوع…" autofocus aria-label="بحث"><button class="btn" type="submit">بحث</button></form>'
+          'placeholder="ابحث في قصص المدونة…" autofocus aria-label="بحث"><button class="btn" type="submit">بحث</button></form>'
           '<div id="search-app"><div id="search-out" class="grid"></div></div></div>')
-    (ROOT / "search.html").write_text(shell(
-        "البحث | نكسوس بريس", "ابحث في أخبار نكسوس بريس.", "", f"{base}/search.html" if base else "", data, "",
-        f'<div class="layout"><main>{sr}</main>{sidebar("", data, poll)}</div>', poll,
-        '<meta name="robots" content="noindex,follow">'), encoding="utf-8")
+    write_page("search.html", "البحث | مملكة الأسرار", "ابحث في قصص مملكة الأسرار.", "",
+               f"{base}/search.html" if base else "", data, "",
+               f'<div class="layout"><main>{sr}</main>{sidebar("", data, poll)}</div>', poll,
+               '<meta name="robots" content="noindex,follow">')
     index = [{"i": a["id"], "t": a["title"], "s": a.get("summary", ""), "c": CATEGORIES[k], "d": a["date"][:10],
-              "ci": a.get("city", ""), "m": cdn(a, 480) or thumb(a["image"])}
+              "h": a.get("hashtags") or [], "m": cdn(a, 480) or thumb(a["image"])}
              for k, a in allart]
     (ROOT / "search.json").write_text(json.dumps(index, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
-    # ---- legal pages
+    # ---- legal pages (including about.html and the literary disclaimer page)
     today = datetime.now().strftime("%Y-%m-%d")
     for fname, (title, body, cls) in legal.pages(CONTACT_EMAIL, today, CATEGORIES, newsletter("band")).items():
-        page = shell(f"{title} | نكسوس بريس", f"{title} - نكسوس بريس", "", f"{base}/{fname}" if base else "", data, "",
-                     f'<div class="page {cls}"><h1>{title}</h1>{body}</div>', poll)
-        (ROOT / fname).write_text(page, encoding="utf-8")
+        write_page(fname, f"{title} | مملكة الأسرار", f"{title} - مملكة الأسرار", "",
+                   f"{base}/{fname}" if base else "", data, "",
+                   f'<div class="page {cls}"><h1>{title}</h1>{body}</div>', poll)
 
     # ---- feed, sitemap, robots, PWA files
     def absu(rel):
@@ -685,25 +822,27 @@ def build():
         f"<pubDate>{datetime.fromisoformat(a['date']).strftime('%a, %d %b %Y %H:%M:%S +0000')}</pubDate><category>{e(CATEGORIES[k])}</category>"
         f"<description>{e(a.get('summary', ''))}</description></item>" for k, a in allart[:30])
     (ROOT / "feed.xml").write_text(
-        '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>نكسوس بريس</title>'
-        f'<link>{e(base or "/")}</link><description>أخبار العالم على مدار الساعة</description><language>ar</language>{items}</channel></rss>', encoding="utf-8")
+        '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>مملكة الأسرار Kingdom Of Secrets</title>'
+        f'<link>{e(base or "/")}</link><description>قصص إبداعية آمنة للعائلات من تأليف نكسوس</description><language>ar</language>{items}</channel></rss>', encoding="utf-8")
     (ROOT / "manifest.webmanifest").write_text(json.dumps({
-        "name": "نكسوس بريس", "short_name": "نكسوس", "lang": "ar", "dir": "rtl", "start_url": "./", "scope": "./",
+        "name": "مملكة الأسرار Kingdom Of Secrets", "short_name": "مملكة الأسرار", "lang": "ar", "dir": "rtl", "start_url": "./", "scope": "./",
         "display": "standalone", "background_color": "#f5f8fb", "theme_color": "#0b3c7a",
         "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}]},
         ensure_ascii=False), encoding="utf-8")
     ver = (allart[0][1]["date"] if allart else "0").replace(":", "").replace("-", "")[:12] + str(len(allart))
     (ROOT / "sw.js").write_text(SW_JS.replace("__VERSION__", ver), encoding="utf-8")
     if base:
-        (ROOT / "robots.txt").write_text(f"User-agent: *\nAllow: /\n\nSitemap: {base}/sitemap.xml\n", encoding="utf-8")
+        (ROOT / "robots.txt").write_text(
+            f"User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /admin.html\n\nSitemap: {base}/sitemap.xml\n",
+            encoding="utf-8")
         sm = "".join(f"<url><loc>{base}/{u}</loc></url>" for u in urls if u != "search.html")
         (ROOT / "sitemap.xml").write_text(f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{sm}</urlset>', encoding="utf-8")
     else:
         if not (ROOT / "robots.txt").exists():
-            (ROOT / "robots.txt").write_text("User-agent: *\nAllow: /\n", encoding="utf-8")
-        if not (ROOT / "sitemap.xml").exists():
-            sm = "".join(f"<url><loc>{u}</loc></url>" for u in urls if u != "search.html")
-            (ROOT / "sitemap.xml").write_text(f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{sm}</urlset>', encoding="utf-8")
+            (ROOT / "robots.txt").write_text(
+                "User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /admin.html\n", encoding="utf-8")
+        sm = "".join(f"<url><loc>{u}</loc></url>" for u in urls if u != "search.html")
+        (ROOT / "sitemap.xml").write_text(f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{sm}</urlset>', encoding="utf-8")
     print(f"site built: {sum(len(v) for v in data.values())} articles")
 
 

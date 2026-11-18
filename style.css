@@ -61,6 +61,18 @@ button,input,textarea,select{font:inherit;color:inherit}
 .badge{display:inline-block;background:var(--badge-bg);color:var(--badge-fg);font-size:12px;font-weight:800;padding:2px 12px;border-radius:20px}
 .card h3{font-size:16px;line-height:1.6;margin-top:8px;color:var(--ink)}
 .card p{font-size:13px;color:var(--muted);margin-top:6px}
+/* story form labels + viral discovery hashtags */
+.tags,.hashtags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tag,.hashtag{display:inline-block;font-size:11px;font-weight:800;line-height:1.8;padding:1px 10px;border-radius:20px;background:var(--soft);color:var(--accent)}
+.tag-short{background:#e0f2fe;color:#075985}.tag-flash{background:#fef3c7;color:#92400e}
+.tag-serial{background:#dcfce7;color:#166534}.tag-interactive{background:#f3e8ff;color:#6b21a8}
+.hashtag{background:#eef6ff;color:#075985}
+.age-badge{background:#fce7f3;color:#9d174d;margin-right:6px}
+/* embedded long-form animated film */
+.story-video{margin:18px 0;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--dark)}
+.story-video video{display:block;width:100%;height:auto;aspect-ratio:16/9;background:#000}
+.video-meta{margin:0;padding:10px 14px;color:var(--muted);font-size:13px;background:var(--soft)}
+.video-meta a{color:var(--sky);font-weight:800}
 .empty{background:var(--card);border:1px dashed #94a3b8;border-radius:10px;padding:30px;text-align:center}
 /* widgets */
 .widget{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:22px}
@@ -257,3 +269,13 @@ img,video,iframe,svg{max-width:100%}
 .city-strip a{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-weight:800;font-size:14px;display:flex;justify-content:space-between;gap:8px}
 .city-strip a:hover{border-color:var(--sky);color:var(--accent)}
 .city-strip span{color:var(--muted);font-weight:700}
+/* ---- Moroccan national team corner (sub-feature inside sports, not a new section) ---- */
+.corner{margin:18px 0 26px;background:linear-gradient(135deg,var(--soft),var(--card));border:1px solid var(--line);border-right:5px solid var(--navy);border-radius:12px;padding:18px 20px}
+.corner .block-title{font-size:20px;border-right-color:var(--red);margin-bottom:12px}
+.corner .city-lead{margin:0 0 16px}
+.corner .empty{padding:18px}
+.corner-notice{background:var(--soft);border-right:4px solid var(--navy);border-radius:8px;padding:10px 14px;margin:0 0 12px;font-size:14px;line-height:1.9;color:var(--text)}
+.corner-badge{background:var(--red);color:#fff;margin-right:8px}
+.corner-compact{margin:14px 0 20px;padding:14px}
+.corner-compact .block-title{font-size:18px}
+.corner-compact .grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
