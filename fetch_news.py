@@ -531,6 +531,10 @@ class ApiError(RuntimeError):
         self.code, self.body = code, str(body)
 
 
+class NoTextProviderError(RuntimeError):
+    """Every configured text provider is unusable: retrying the same prompt cannot help."""
+
+
 def request(url, payload=None, headers=None, timeout=120):
     data = json.dumps(payload).encode() if payload is not None else None
     h = {"User-Agent": UA, **(headers or {})}
@@ -732,6 +736,8 @@ def write_opinion_article(cat, source_items):
             summary = re.sub(r"\s+", " ", str(art.get("summary", ""))).strip()
             raw = art["body"]
             body = style_guide.clean_body(raw if isinstance(raw, list) else str(raw), as_list=True)
+        except NoTextProviderError:
+            raise
         except Exception as ex:
             print("bad JSON from opinion model, retrying:", str(ex)[:100])
             continue
@@ -880,6 +886,8 @@ def generate_text(system, user):
         providers.append("groq")
     if OPENROUTER_KEY:
         providers.append("openrouter")
+    if not providers:
+        raise NoTextProviderError("No text provider available (add GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY).")
     last = None
     for p in providers:
         if p in STATE["dead_text"]:
@@ -890,7 +898,33 @@ def generate_text(system, user):
             print(f"provider '{p}' failed:", str(ex)[:200])
             STATE["dead_text"].add(p)
             last = ex
-    raise last or RuntimeError("No text provider available (add GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY).")
+    raise NoTextProviderError("No usable text provider. Add or fix GEMINI_API_KEY (recommended), "
+                              "GROQ_API_KEY or OPENROUTER_API_KEY; check key validity, quota and model access. "
+                              "Last error: " + str(last)[:200])
+
+
+def preflight_text_provider():
+    """Prove at least one text provider works BEFORE the long image/archive pass.
+
+    Without this, an invalid key turns into four silent retries per article and a 3-hour red build.
+    The probe is capped at 90 seconds so a dead endpoint fails fast instead of burning the whole budget.
+    """
+    global RUN_DEADLINE
+    original_deadline = RUN_DEADLINE
+    RUN_DEADLINE = time.monotonic() + 90
+    try:
+        generate_text("Reply with only the exact JSON object.", '{"ok":true}')
+    except Exception as ex:
+        raise SystemExit(
+            "ERROR: no usable AI text provider, stopping in seconds instead of waiting for the run budget.\n"
+            "Fix in GitHub: Settings > Secrets and variables > Actions > Secrets. "
+            "Add a valid GEMINI_API_KEY from https://aistudio.google.com/apikey "
+            "(or GROQ_API_KEY / OPENROUTER_API_KEY), then rerun the workflow.\n"
+            + str(ex)[:300]
+        ) from ex
+    finally:
+        RUN_DEADLINE = original_deadline
+    print("text provider preflight: OK")
 
 
 def parse_json(text):
@@ -1002,6 +1036,8 @@ def write_story_article(cat, form="short", spark=""):
             raw_body = art["body"]
             body = fiction_clean_body(raw_body if isinstance(raw_body, str) else [str(p) for p in raw_body])
             scenes = normalize_scenes(art.get("scenes"))
+        except NoTextProviderError:
+            raise
         except Exception as ex:
             print("bad JSON from fiction model, retrying:", str(ex)[:100])
             continue
@@ -1054,6 +1090,8 @@ def write_books_article(payload):
             raw = res["body"]
             body = [raw] if isinstance(raw, str) else list(raw)
             body = [re.sub(r"\s+", " ", str(p)).strip() for p in body if str(p).strip()]
+        except NoTextProviderError:
+            raise
         except Exception as ex:
             print("bad JSON from model (books), retrying:", str(ex)[:100])
             continue
@@ -1787,6 +1825,7 @@ def main():
     deadline = started + RUN_BUDGET_MIN * 60
     RUN_DEADLINE = deadline
     print("run budget:", RUN_BUDGET_MIN, "min (the run always builds and pushes before this limit)")
+    preflight_text_provider()
     print("cloudinary:", "on" if cloudinary_cfg() else "off (set CLOUDINARY_URL or the 3 CLOUDINARY_* secrets)")
     print("image providers:", ",".join(IMAGE_PROVIDERS), "| gemini:", "on" if GEMINI_KEY else "off",
           "| cloudflare:", "on" if (CF_ACCOUNT and CF_TOKEN) else "off (add CF_ACCOUNT_ID + CF_API_TOKEN)",
@@ -1919,6 +1958,10 @@ def main():
                 art = write_opinion_article(cat, sources)
             else:
                 art = write_story_article(cat, form, spark)
+        except NoTextProviderError as ex:
+            print("stopping generation: no usable text provider:", str(ex)[:300])
+            errors.append(str(ex))
+            break
         except Exception as ex:  # providers down: do NOT burn the story, stop after 2 failures
             print("generation failed:", str(ex)[:300])
             errors.append(str(ex))
