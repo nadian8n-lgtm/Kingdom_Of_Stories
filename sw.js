@@ -1,5 +1,5 @@
-/* Nexus Press service worker: instant repeat visits + offline fallback */
-const V = 'np-20261117T210138';
+/* مملكة الأسرار service worker: instant repeat visits + offline fallback */
+const V = 'np-20261118T12016';
 const CORE = ['./', 'style.css', 'site.js', 'tools.js', 'logo.webp'];
 self.addEventListener('install', e => {
   self.skipWaiting();
