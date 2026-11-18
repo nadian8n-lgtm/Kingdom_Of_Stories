@@ -1,12 +1,12 @@
 """The learning section ("أكاديمية الذكاء الاصطناعي"): free Python-for-AI and Generative-AI courses + a learning assistant.
 Links come from the open lists https://github.com/CelaDaniel/free-ai-resources-x (MIT) and https://github.com/12britz/awesome-free-models (CC0);
-descriptions below are written for Nexus Press. The page style is inline so style.css does not need to change."""
+descriptions below are written for the personal blog «مملكة الأسرار». The page style is inline so style.css does not need to change."""
 import html
 
 e = html.escape
 
-TITLE = "أكاديمية الذكاء الاصطناعي | نكسوس بريس"
-DESC = "كورسات مجانية لتعلّم بايثون للذكاء الاصطناعي والذكاء الاصطناعي التوليدي، مرتبة من الصفر، مع مساعد تعليمي."
+TITLE = "أكاديمية الذكاء الاصطناعي | مملكة الأسرار"
+DESC = "كورسات مجانية لتعلّم بايثون للذكاء الاصطناعي والذكاء الاصطناعي التوليدي، مرتبة من الصفر، مع مساعد تعليمي في مملكة الأسرار الشخصية."
 
 # (title, url, description, level, note)
 PYTHON = [
@@ -69,7 +69,7 @@ def body(chat_src="chat.js"):
                    for t, u, d in MORE)
     return f"""{CSS}
 <div class="page ai-page"><div class="ai-hero"><h1>🎓 أكاديمية الذكاء الاصطناعي</h1>
-<p>كورسات مجانية مختارة لتتعلّم بايثون ثم الذكاء الاصطناعي التوليدي، مرتبة من الصفر وبدون تكلفة.</p></div>
+<p>كورسات مجانية مختارة في مملكة الأسرار لتتعلّم بايثون ثم الذكاء الاصطناعي التوليدي، مرتبة من الصفر وبدون تكلفة.</p></div>
 <p>لا تحتاج إلى خبرة سابقة. اتبع هذا الترتيب وستصل خطوة بخطوة:</p>
 <div class="ai-path"><span>1) أساسيات بايثون</span><span>2) مكتبات البيانات</span><span>3) تعلّم الآلة</span><span>4) الذكاء الاصطناعي التوليدي</span></div>
 <p>خصّص 30 إلى 45 دقيقة يوميًا، ونفّذ كل درس بنفسك على الحاسوب بدل المشاهدة فقط. وتذكّر أن بعض الدورات بالإنجليزية، ومتصفحك يستطيع ترجمة صفحاتها.</p>
