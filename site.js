@@ -1,4 +1,4 @@
-/* Nexus Press - core script (theme, date, language, slider, comments, share, newsletter, contact, poll, lazy tools) */
+/* مملكة الأسرار - core script (theme, date, language, slider, share, newsletter, contact, poll, lazy tools) */
 (function () {
   'use strict';
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -94,69 +94,6 @@
   window.addEventListener('scroll', function () { if (!tick) { tick = true; requestAnimationFrame(onScroll); } }, { passive: true });
   if (up) up.onclick = function () { window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
-  /* ---- comments: name + comment, moderated, like the big e-newspapers (backend = Code.gs) */
-  var cs = $('#comments');
-  if (cs) (function () {
-    var art = cs.dataset.article, list = $('#cm-list'), form = $('.cm-form', cs), msg = $('#cm-msg'), cnt = $('#cm-count'), left = $('#cm-left');
-    var shown = 8, data = [], t0 = Date.now(), mineKey = 'np-mine-' + art;
-    var el = function (tag, cls, txt) { var x = document.createElement(tag); if (cls) x.className = cls; if (txt != null) x.textContent = txt; return x; };
-    function ago(ts) {
-      var s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
-      if (s < 60) return 'الآن'; var m = Math.floor(s / 60); if (m < 60) return 'منذ ' + m + ' د';
-      var h = Math.floor(m / 60); if (h < 24) return 'منذ ' + h + ' س'; var d = Math.floor(h / 24);
-      if (d < 30) return 'منذ ' + d + ' يوم'; return new Date(ts).toLocaleDateString('ar-u-nu-latn');
-    }
-    function item(c, pending) {
-      var li = el('div', 'cm' + (pending ? ' pending' : '')), av = el('div', 'cm-av', (c.name || '؟').trim().charAt(0).toUpperCase()), bd = el('div', 'cm-body');
-      var hd = el('div', 'cm-head'); hd.appendChild(el('b', '', c.name)); hd.appendChild(el('span', '', pending ? 'قيد المراجعة' : ago(c.ts)));
-      bd.appendChild(hd); bd.appendChild(el('p', '', c.text)); li.appendChild(av); li.appendChild(bd); return li;
-    }
-    function draw() {
-      list.textContent = '';
-      var mine = []; try { mine = JSON.parse(store.get(mineKey) || '[]'); } catch (e) {}
-      mine.forEach(function (c) { list.appendChild(item(c, true)); });
-      if (!data.length && !mine.length) list.appendChild(el('p', 'muted', 'لا توجد تعليقات بعد. كن أول من يعلّق على هذا المقال.'));
-      data.slice(0, shown).forEach(function (c) { list.appendChild(item(c, false)); });
-      if (data.length > shown) { var more = el('button', 'btn alt', 'عرض المزيد من التعليقات'); more.type = 'button'; more.onclick = function () { shown += 10; draw(); }; list.appendChild(more); }
-      cnt.textContent = data.length ? '(' + data.length + ')' : '';
-    }
-    function loadList() {
-      if (!api) { list.textContent = ''; list.appendChild(el('p', 'muted', 'خدمة التعليقات قيد التفعيل.')); return; }
-      fetch(api + (api.indexOf('?') > -1 ? '&' : '?') + 'action=comments&article=' + encodeURIComponent(art))
-        .then(function (r) { return r.json(); }).then(function (j) { data = j.comments || []; draw(); })
-        .catch(function () { list.textContent = ''; list.appendChild(el('p', 'muted', 'تعذّر تحميل التعليقات الآن.')); });
-    }
-    inView(cs, loadList, '500px');
-    form.elements.text.addEventListener('input', function () { left.textContent = 1000 - form.elements.text.value.length; });
-    form.addEventListener('submit', function (ev) {
-      ev.preventDefault();
-      var f = form.elements, name = f.name.value.trim(), text = f.text.value.trim(), em = f.email.value.trim();
-      if (!api) { say(msg, 'خدمة التعليقات قيد التفعيل حاليًا.', false); return; }
-      if (name.length < 2) { say(msg, 'يرجى كتابة اسمك.', false); return; }
-      if (text.length < 3) { say(msg, 'يرجى كتابة تعليقك.', false); return; }
-      if (em && !okMail(em)) { say(msg, 'البريد الإلكتروني غير صحيح.', false); return; }
-      if (!f.agree.checked) { say(msg, 'يرجى الموافقة على شروط النشر.', false); return; }
-      var last = +store.get('np-last-cm') || 0;
-      if (Date.now() - last < 30000) { say(msg, 'يرجى الانتظار قليلًا قبل إرسال تعليق آخر.', false); return; }
-      var btn = form.querySelector('button[type=submit]'); btn.disabled = true; say(msg, 'جارٍ الإرسال…', true);
-      post({ type: 'comment', article: art, name: name, email: em, text: text, hp: f.hp.value, t: Date.now() - t0 }).then(function (j) {
-        if (!j.ok) throw new Error(j.error || 'failed');
-        store.set('np-last-cm', String(Date.now())); store.set('np-name', name);
-        if (j.status === 'approved') { data.unshift({ name: name, text: text, ts: Date.now() }); say(msg, 'تم نشر تعليقك. شكرًا لمشاركتك!', true); }
-        else if (j.status === 'blocked') { say(msg, 'لم يُقبل التعليق لمخالفته شروط النشر.', false); }
-        else {
-          var mine = []; try { mine = JSON.parse(store.get(mineKey) || '[]'); } catch (e) {}
-          mine.unshift({ name: name, text: text }); store.set(mineKey, JSON.stringify(mine.slice(0, 3)));
-          say(msg, 'شكرًا لك! تم استلام تعليقك وسيظهر بعد مراجعته من طرف هيئة التحرير.', true);
-        }
-        f.text.value = ''; f.agree.checked = false; left.textContent = '1000'; draw();
-      }).catch(function (e) {
-        say(msg, e.message === 'wait' ? 'يرجى الانتظار قليلًا قبل إرسال تعليق آخر.' : e.message === 'too fast' ? 'أعد المحاولة بعد لحظات.' : 'تعذّر إرسال التعليق الآن، حاول لاحقًا.', false);
-      }).then(function () { btn.disabled = false; });
-    });
-    if (store.get('np-name')) form.elements.name.value = store.get('np-name');
-  })();
-
   /* ---- share buttons */
   $$('.share button').forEach(function (b) {
     b.onclick = function () {
@@ -180,7 +117,7 @@
       .then(function (r) { return r.json(); });
   }
 
-  /* ---- send a form through FormSubmit (arrives in the newspaper's Gmail) */
+  /* ---- send a form through FormSubmit (arrives in the blog's Gmail) */
   function formsubmit(email, payload) {
     payload._captcha = 'false'; payload._template = 'table';
     return fetch('https://formsubmit.co/ajax/' + encodeURIComponent(email), {
@@ -201,7 +138,7 @@
       if (!okMail(em)) { say(msg, 'يرجى كتابة بريد إلكتروني صحيح.', false); return; }
       if (f.elements._honey && f.elements._honey.value) return;
       var btn = f.querySelector('button'); btn.disabled = true;
-      var ok = function () { say(msg, 'شكرًا لاشتراكك! ستصلك أخبار نكسوس بريس قريبًا.', true); f.reset(); store.set('np-sub', '1'); };
+      var ok = function () { say(msg, 'شكرًا لاشتراكك! ستصلك مقالات مملكة الأسرار قريبًا.', true); f.reset(); store.set('np-sub', '1'); };
       var fail = function () { say(msg, 'تعذّر الاشتراك الآن، حاول لاحقًا أو راسلنا عبر صفحة «اتصل بنا».', false); };
       if (api) {
         post({ type: 'subscribe', email: em, hp: f.elements._honey ? f.elements._honey.value : '' }).then(function (j) { if (!j.ok) throw 0; ok(); }, fail)
@@ -211,7 +148,7 @@
           method: 'POST', mode: 'no-cors', body: new URLSearchParams({ email: em, embed: '1' })
         }).then(ok, fail).then(function () { btn.disabled = false; });
       } else {
-        formsubmit(f.dataset.target, { email: em, _subject: 'مشترك جديد في النشرة البريدية - نكسوس بريس', _replyto: em, message: 'اشتراك جديد في النشرة البريدية: ' + em })
+        formsubmit(f.dataset.target, { email: em, _subject: 'مشترك جديد في النشرة البريدية - مملكة الأسرار', _replyto: em, message: 'اشتراك جديد في النشرة البريدية: ' + em })
           .then(ok, fail).then(function () { btn.disabled = false; });
       }
     });
@@ -222,7 +159,7 @@
   if (cf) {
     var mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent), to = cf.dataset.email;
     $$('[data-mail]').forEach(function (a) { // phones: open the mail app instead of Gmail web
-      if (mobile) { var sj = a.dataset.mail ? 'نكسوس بريس - ' + a.dataset.mail : 'تواصل مع نكسوس بريس'; a.href = 'mailto:' + to + '?subject=' + encodeURIComponent(sj); a.removeAttribute('target'); }
+      if (mobile) { var sj = a.dataset.mail ? 'مملكة الأسرار - ' + a.dataset.mail : 'تواصل مع مملكة الأسرار'; a.href = 'mailto:' + to + '?subject=' + encodeURIComponent(sj); a.removeAttribute('target'); }
     });
     var cp = $('#ct-copy');
     if (cp) cp.onclick = function () {
@@ -294,7 +231,7 @@
     inView(box, function () { if (store.get(key) !== null) results(); else options(); }, '200px');
   });
 
-  /* ---- reader tools: save for later + font size (like the big e-newspapers) */
+  /* ---- reader tools: save for later + font size */
   var abody = $('.article-body');
   if (abody) (function () {
     var meta = $('.meta'), share = $('.share');
