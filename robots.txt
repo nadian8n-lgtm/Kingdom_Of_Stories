@@ -2,3 +2,5 @@ User-agent: *
 Allow: /
 Disallow: /admin/
 Disallow: /admin.html
+
+Sitemap: https://nadian8n-lgtm.github.io/Nexus_Press/sitemap.xml
