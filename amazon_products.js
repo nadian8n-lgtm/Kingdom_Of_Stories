@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Nexus Press - Amazon corner (Creators API, Node 18+, NO dependencies).
+ * مملكة الأسرار - Amazon corner (Creators API, Node 18+, NO dependencies).
  *
  * Always creates deals/index.html ("ركن أمازون"): category tiles with affiliate SEARCH links (work without the API, show no prices).
  * When the Creators API is available for your account it also adds today's products (deals/<ASIN>.html) above the tiles.
@@ -136,9 +136,9 @@ function page(p, t, when) {
     : `<span class="small">السعر الحالي وتوفر المنتج يظهران في صفحة المنتج على أمازون.</span>`;
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(p.title)} | نكسوس بريس</title><meta name="description" content="${esc(p.title)} - اختيار من قسم ${esc(t.name)} على أمازون.">
+<title>${esc(p.title)} | مملكة الأسرار</title><meta name="description" content="${esc(p.title)} - اختيار من قسم ${esc(t.name)} على أمازون.">
 <meta name="robots" content="noindex,follow"><style>${CSS}</style></head><body><div class="wrap">
-<div class="top"><a href="../index.html">← نكسوس بريس</a><a href="index.html">كل العروض</a></div>
+<div class="top"><a href="../index.html">← مملكة الأسرار</a><a href="index.html">كل العروض</a></div>
 <div class="card">${DISCLOSURE}<h1>${esc(p.title)}</h1>
 <p>منتج من قسم <b>${esc(t.name)}</b>، ظهر ضمن أعلى النتائج على أمازون عند الترتيب حسب تقييمات العملاء. التقييمات والمواصفات الكاملة والآراء الحقيقية للمشترين متاحة في صفحة المنتج على أمازون.</p>
 <div class="box"><img src="${esc(p.image)}" alt="${esc(p.title)}" loading="lazy" decoding="async">
@@ -167,8 +167,8 @@ function indexPage(list, t, when) {
     : '';
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ركن أمازون | نكسوس بريس</title><meta name="robots" content="noindex,follow"><style>${CSS}.cat{text-align:center}.cat .ico{font-size:38px;display:block}</style></head><body><div class="wrap">
-<div class="top"><a href="../index.html">← نكسوس بريس</a></div>
+<title>ركن أمازون | مملكة الأسرار</title><meta name="robots" content="noindex,follow"><style>${CSS}.cat{text-align:center}.cat .ico{font-size:38px;display:block}</style></head><body><div class="wrap">
+<div class="top"><a href="../index.html">← مملكة الأسرار</a></div>
 <div class="card">${DISCLOSURE}<h1>ركن أمازون</h1>
 <p>اختر القسم الذي يهمّك وتصفّح المنتجات مباشرة على أمازون. الأسعار والتقييمات وتوفر المنتجات تظهر في أمازون وقت الشراء.</p>
 ${products}<h2 style="font-size:19px;margin-top:22px">تصفّح الأقسام</h2>${tiles(t)}</div></div></body></html>`;
