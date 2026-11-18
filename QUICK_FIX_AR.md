@@ -1,70 +1,97 @@
-إصلاح سريع لإلغاء GitHub Actions وخطأ IndentationError في build_site.py
-التشخيص المؤكد لخطأ السجل الأخير
-من لقطة الشاشة:
+# دليل سريع: ضبط مملكة الأسرار
 
-فشل fetch_news.py و check_site.py و adsense_audit.py كلها بنفس الخطأ:
-File "/home/runner/work/Nexus_Press/Nexus_Press/build_site.py", line 351
-  return f'<section class="nl-band">...</section>'
-IndentationError: expected an indented block after 'if' statement on line 350
-السبب: نسخة build_site.py المرفوعة حالياً على GitHub معطوبة في دالة newsletter() (السطر 350–351 بدون 4 مسافات بعد if kind == "band":)، كما أن نسخة adsense_audit.py على GitHub قديمة (import build_site بالسطر 26 بدل 30).
+**مملكة الأسرار** مدونة قصصية إبداعية يكتبها **نكسوس**، آمنة للعائلات، بلا أخبار ولا تعليقات للزوار. كل القصص من تأليف الكاتب، **وأي تشابه مع الواقع محض صدفة**. النص الثابت في كل قصة: «هذه القصة عمل إبداعي من تأليف نكسوس، وأي تشابه مع الواقع محض صدفة.»
 
-الحل المباشر خطوة بخطوة
-ارفع كل ملفات الحزمة المصححة إلى مستودعك على GitHub (ولا ترفع فقط ملفاً واحداً):
+> صفحة [إخلاء مسؤولية](disclaimer.html) («إخلاء مسؤولية أدبي») تُولَّد تلقائياً من `legal.py`/`build_site.py`؛ لا تنشئها يدوياً.
 
-build_site.py (مصحح ونظيف تماماً)
-fetch_news.py (تحديث 2026-11-16d + توحيد فحص الحدة والصور)
-check_site.py (فحص القسم الفعلي من articles.json بدل الاعتماد على بادئة الـ ID)
-adsense_audit.py (إصلاح مقارنة تكرار الصور)
-curate.py و books_library.py و legal.py و style.css و articles.json
-.github/workflows/auto_news.yml (في مساره .github/workflows/)
-ثم شغّل Actions → Nexus Press Auto Publisher → Run workflow بـ count = 8 و regen_images = none.
+## الأقسام الثلاثة عشر
 
-التشخيص المؤكد
-من لقطة الشاشة، السبب واضح:
+| المفتاح | الاسم | المجموعة | عدد الكلمات |
+| --- | --- | --- | --- |
+| `story_realistic` | واقعي وإنساني | عالم القصص | 2000–5000 |
+| `story_mystery` | غموض وإثارة | عالم القصص | 2000–5000 |
+| `story_scifi` | خيال علمي وتكنولوجيا | عالم القصص | 2000–5000 |
+| `story_fantasy` | فانتازيا ومغامرات | عالم القصص | 2000–5000 |
+| `story_horror` | رعب نفسي | عالم القصص | 2000–5000 |
+| `story_history` | تاريخي وثقافي | عالم القصص | 2000–5000 |
+| `story_comedy` | كوميديا وسخرية | عالم القصص | 2000–5000 |
+| `kids_3_6` | براعم الصغار (3-6 سنوات) | ركن الأطفال | 800–1500 |
+| `kids_7_10` | مغامرو المستقبل (7-10 سنوات) | ركن الأطفال | 800–1500 |
+| `kids_11_14` | يافعون ومراهقون (11-14 سنة) | ركن الأطفال | 800–1500 |
+| `ar_tech` | تقنية (قراءة رأي) | قراءات نكسوس | 800–1500 |
+| `ar_arts` | فن وثقافة (قراءة رأي) | قراءات نكسوس | 800–1500 |
+| `ar_books` | المكتبة الرقمية المجانية | المكتبة | كما كانت |
 
-Duration shown: cancelled ... in 1h 0m 16s
-Error: The operation was canceled.
-إلغاء دورة كاملة بعد نحو 60 دقيقة يعني أن سير العمل القديم كان يوقف الوظيفة عند حد 60 دقيقة، قبل وصوله إلى خطوة البناء والدفع. لذلك ضاعت المواد التي أنشأها البوت في تلك الدورة.
+القصص بلا حقل `sources`؛ `ar_books` و`ar_tech` و`ar_arts` وحدها تحتفظ بالمصادر. أزل أي مرجع إلى الأقسام الإخبارية القديمة أو زاوية المنتخب المغربي من اللوحة وسير العمل والوثائق.
 
-التحذير الأصفر:
+كل قصة/قراءة رأي جديدة تحتاج حقل `hashtags` بـ5–7 هاشتاغات عربية قوية. يُعرض على البطاقة وأعلى القصة ويُضاف إلى `search.json`؛ أضفه في لوحة التحكم (حقل «هاشتاغات قوية للنشر والبحث») أو يضيفه `fetch_news.py` تلقائياً من `CATEGORY_HASHTAGS`. `check_site.py` يرفض أقل من 3 هاشتاغات؛ مقالات `ar_books` الأربعة معفاة.
 
-Node.js 20 is deprecated ... forced to run on Node.js 24
+## القائمة الرئيسية (5 عناصر فقط)
 
-ليس هو سبب الإلغاء، لكنه تم تحديثه أيضاً حتى يختفي التحذير.
+1. الرئيسية (`index.html`) — أحدث القصص + بطاقة «قصة الأسبوع».
+2. عالم القصص (`hub-stories.html`) — التصنيفات الأدبية السبعة.
+3. ركن الأطفال (`hub-kids.html`) — الفئات العمرية الثلاث.
+4. الومضات والحلقات (`flashes.html`) — الومضات والحلقات والتفاعلية.
+5. عن المدونة (`about.html`) — التعريف + إخلاء المسؤولية الأدبية.
 
-ما تم إصلاحه
-.github/workflows/auto_news.yml
+أكاديمية AI والمكتبة وعروض أمازون والطقس وقراءات الرأي في التذييل/الشريط الجانبي فقط.
 
-timeout-minutes: 350 بدل الحد القديم 60 دقيقة.
-actions/checkout@v7 وactions/setup-python@v7 وactions/setup-node@v7.
-Node.js 24 بدل 20.
-إصلاح مسار حزمة @google/genai عبر NODE_PATH.
-لا يُرفع الموقع إذا فشل فحص الروابط/الصور أو تدقيق أدسنس.
-fetch_news.py
+## وسوم القصة
 
-ميزانية زمنية صلبة داخل البرنامج: لا يبدأ مقالاً جديداً بعد RUN_BUDGET_MIN (150 دقيقة افتراضياً).
-كل طلب HTTP ومزود صور يراقب الوقت المتبقي؛ إذا اقتربت النهاية يتوقف ويستخدم الرسم المحلي السريع بدل انتظار مزود بطيء.
-الحد الأقصى المضمون لميزانية التشغيل 300 دقيقة، حتى لا يتجاوز حد GitHub ولا تُلغى الدورة.
-خيار fill في الواجهة صار له معنى صحيح داخل الكود.
-إصدار خط النشر: 2026-11-16c.
-أسرع طريقة لتطبيق الإصلاح
-ارفع فقط الملفين التاليين إلى المستودع، مع الحفاظ على مسار سير العمل:
+`short` = **#قصة_قصيرة** · `flash` = **#ومضة_قصصية** · `serial` = **#سلسلة_حلقات** · `interactive` = **#قصة_تفاعلية**. تظهر كشرائح غير قابلة للنقر على بطاقة القصة، وتعرض `flashes.html` وسوم `flash`/`serial`/`interactive`.
 
-.github/workflows/auto_news.yml
-fetch_news.py
-ثم:
+## السلامة العائلية
 
-افتح Actions → Nexus Press Auto Publisher → Run workflow.
-اختر count = 6 وregen_images = none.
-تأكد أن أول السجل يحتوي:
-pipeline: 2026-11-16c | regen images: none
-run budget: 150 min (the run always builds and pushes before this limit)
-وفي نهاية الدورة الجيدة ستظهر:
+لا محتوى جنسي أو دماء أو عنف مصوّر أو سبّ أو كراهية أو إيذاء نفس أو مخدرات أو استدراج. **ركن الأطفال أشدّ:** لغة بسيطة ورسائل إيجابية، بلا رعب أو عنف أو مواضيع ناضجة وبلا إعلانات للصغار. قصص **الرعب النفسي** توتر وغموض فقط بلا دماء، وتحمل تنبيه `class="story-warning"` في الأعلى (ولكلمة «تنبيه» مكانها في `category-story_horror.html`). لا أسماء أشخاص حقيقيين، وأوصاف المشاهد بلا وجوه حقيقية ولا شعارات ولا نصوص داخل الصورة.
 
-site check OK
-AdSense audit OK
-pushed
-ملاحظة مهمة
-الملف المضغوط يحتوي حزمة المشروع التي أرسلها المستخدم مع التعديلات. عند الرفع اليدوي إلى GitHub من الواجهة، لا ترفع الملف المضغوط نفسه؛ ارفع الملفين المذكورين أعلاه إلى مسارهما الصحيح. كما يجب رفع fetch_news.py إلى الجذر، وauto_news.yml إلى .github/workflows/.
+## قراءات نكسوس
 
-ملف CHANGES.diff يوضح الفروق بالضبط، وQUICK_FIX_AR.md هو هذا الدليل.
+`ar_tech` و`ar_arts` رأي شخصي هادف بصوت نكسوس، **ليس عملاً صحفياً**: تُنسب الوقائع والأرقام لمصادرها، ويُوسم الرأي بـ«رأي شخصي»/«وجهة نظر»، والمواضيع هادفة. **يُمنع الجريمة والقضاء والحوادث والشؤون المحلية.**
+
+## مصنع القصص والأفلام
+
+- Gemini يكتب القصة وقائمة `scenes` (لكل مشهد `narration` و`visual` بأسلوب أنيميشن ثلاثي الأبعاد سينمائي Pixar-like بلا نصوص أو شعارات أو وجوه حقيقية).
+- Cloudflare Workers AI (`@cf/black-forest-labs/flux-1-schnell`) يرسم إطارات المشاهد ويحفظها `images/story-<id>-scene-<n>.webp`.
+- Edge-TTS يقرأ السرد بالعربية (`ar-SA-ZariyahNeural`)، وFFmpeg (`imageio-ffmpeg`) يركّب إطارات وصوتاً بحركة وانتقالات ناعمة في MP4 طويل.
+- **الفيديو يُرفع إلى Internet Archive ويُستضاف هناك، ولا يُخزَّن داخل المستودع**؛ حقل `video` يُظهر مشغّل `<div class="story-video">` مع `<video ...>` و`<source src="...mp4">` في أعلى صفحة القصة.
+- `video_factory.py` يُستدعى من `fetch_news.py` (بلا خطوة workflow إضافية)، وأخطاؤه لا تُسقط الدورة.
+
+**سرّان جديدان** في Settings → Secrets and variables → Actions → Secrets: `IA_ACCESS_KEY` و`IA_SECRET_KEY`.
+
+**متغيرات اختيارية** في Variables: `IA_COLLECTION` و`IA_IDENTIFIER_PREFIX` و`EDGE_TTS_VOICE` و`VIDEO_PER_RUN` (الافتراضي `1`، حتى `8`) و`VIDEO_MAX_MINUTES` (`20`) و`VIDEO_MAX_SCENES` (`40`) و`VIDEO_FPS` (`24`).
+
+**غياب أسرار Internet Archive لا يفشل الدورة:** تحذير في السجل، والقصص تُنشر بدون فيديو.
+
+## سير العمل
+
+- `auto_news.yml` (الاسم: **مملكة الأسرار — النشر التلقائي**): `cron: '0 */2 * * *'`، `count=8`، `regen_images=fill` (يُترجم إلى `svg`)، `HEAL_IMAGES=24`، `RESTYLE_ARCHIVE=10`، `RUN_BUDGET_MIN=150`، `timeout-minutes=350`. رسالة الالتزام: «نشر تلقائي: قصص وأفلام جديدة».
+- `rebuild.yml` (الاسم: **مملكة الأسرار — إعادة بناء القصص**): خطواته checkout بـ`fetch-depth: 0`، `setup-python` 3.12، `pip install pillow`، `python build_site.py` مع عدّ القصص، ثم `python check_site.py`، ثم `python adsense_audit.py` (`ADSENSE_MIN_PER_CATEGORY` افتراضي `0`)، ثم الحفظ والرفع مع إعادة محاولة. يُشغَّل من اللوحة أو Actions، ولا يكتب قصصاً جديدة.
+- `amazon_deals.yml` (الاسم: **مملكة الأسرار — عروض أمازون**) كما هو.
+- بريد الكاتب: `CONTACT_EMAIL=nadia.bouizgarne1@gmail.com`.
+
+## لوحة التحكم
+
+- `admin/index.html` + `admin/admin.js` في المتصفح فقط، بلا سيرفر ولا قاعدة بيانات.
+- مفتاح GitHub Fine-grained **لمستودع واحد**، بصلاحيتي **Contents: Read and write** و**Actions: Read and write**، ومدة **90 يوماً**.
+- المفتاح في `localStorage`، وPIN مُجزّأ عبر SHA-256؛ العمليات قابلة لإعادة التشغيل، والمقالات اليدوية محمية بـ`manual: true`.
+- الخصوصية: `noindex,nofollow,noarchive,nosnippet,noimageindex`، بلا روابط زائر إلى اللوحة ولا إدراج في `sitemap.xml`؛ `robots.txt` يحفظ `Disallow: /admin/` و`Disallow: /admin.html`.
+- تذكير داخلي بصفحة **إخلاء مسؤولية** واسم الملف `disclaimer.html`، بدون رابط زائر.
+
+## الرفع من متصفح GitHub
+
+1. **Add file → Upload files**.
+2. اسحب الملفات وأفلتها، مع إبقاء ملفات سير العمل داخل `.github/workflows/`.
+3. اكتب رسالة الالتزام ثم **Commit changes**.
+4. شغّل **Actions → مملكة الأسرار — إعادة بناء القصص → Run workflow** عند تغيير `articles.json` أو ملفات البناء.
+
+ارفع الملفات جاهزة؛ **لا تحرّرها داخل محرر GitHub**، ولا ترفع `disclaimer.html` يدوياً.
+
+## حذف الملفات القديمة
+
+احذف من المستودع إن وُجدت: `category-ar_world.html` و`category-ar_economy.html` و`category-ar_sports.html` و`category-ar_local.html` و`category-ar_cities.html` و`city-*.html` و`reclassify_archive.py` و`cities.py`، وأي أثر لزاوية المنتخب أو المقالات القديمة عدا مقالات `ar_books` الأربعة.
+
+## أدوات مجانية فقط
+
+GitHub Actions، Pillow للرسوم البديلة، مزوّدات الصور المجانية (Gemini، Cloudflare Workers AI FLUX، Together AI، Hugging Face Space)، Edge-TTS، FFmpeg، وInternet Archive لاستضافة الفيديو. لا خدمات مدفوعة ولا مكتبات صور خارجية.
+
+`README.md` يحتوي التفاصيل الكاملة.
