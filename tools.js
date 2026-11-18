@@ -1,4 +1,4 @@
-/* Nexus Press - tools: weather + prayer times for any city in the world, and site search.
+/* مملكة الأسرار - tools: weather + prayer times for any city in the world, and site search.
    APIs (free, no key): Open-Meteo (geocoding + forecast), Aladhan (prayer times), BigDataCloud (reverse geocode for "my location"). */
 (function () {
   'use strict';
