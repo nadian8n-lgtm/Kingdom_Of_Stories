@@ -30,6 +30,9 @@ jobs:
 
       - run: pip install pillow
 
+      - name: NP preflight self-repair (syntax + thumbnails)
+        run: python preflight_repair.py
+
       - name: بناء صفحات قصص مملكة الأسرار من articles.json
         env:
           # نفس متغيرات بناء صفحات القصص المستعملة في النشر التلقائي حتى تبقى الصفحات متطابقة
