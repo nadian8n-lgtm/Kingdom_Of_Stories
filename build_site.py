@@ -37,15 +37,16 @@ NEWSLETTER_BUTTONDOWN = os.getenv("NEWSLETTER_BUTTONDOWN", "")
 NP_API = os.getenv("NP_API", "").strip()
 POLL_NS = "np-" + (re.sub(r"[^a-z0-9]+", "-", REPO.lower()).strip("-") if REPO else "nexus-blog")
 
-# Exactly the 13 sections of the story blog (SPEC §4).
+# The 14 sections of the story blog (SPEC §4): 8 fiction genres + 3 kids + 3 services.
 CATEGORIES = {
     "story_realistic": "واقعي وإنساني",
     "story_mystery": "غموض وإثارة",
     "story_scifi": "خيال علمي وتكنولوجيا",
     "story_fantasy": "فانتازيا ومغامرات",
-    "story_horror": "رعب نفسي",
+    "story_horror": "قصص رعب",
     "story_history": "تاريخي وثقافي",
     "story_comedy": "كوميديا وسخرية",
+    "story_religious": "قصص دينية",
     "kids_3_6": "براعم الصغار (3-6 سنوات)",
     "kids_7_10": "مغامرو المستقبل (7-10 سنوات)",
     "kids_11_14": "يافعون ومراهقون (11-14 سنة)",
@@ -78,14 +79,23 @@ AGE_BADGES = {
 }
 
 LITERARY_DISCLAIMER = "هذه القصة عمل إبداعي من تأليف نكسوس، وأي تشابه مع الواقع محض صدفة."
-HORROR_NOTICE = ('<aside class="story-warning"><b>تنبيه:</b> قصص الرعب النفسي تعتمد على التوتر '
-                 'والغموض فقط، بلا دماء أو تشريح، وهي مخصّصة للكبار الذين يحبّون الإثارة الهادئة.</aside>')
+RELIGIOUS_DISCLAIMER = ('قصص هذا القسم مستندة إلى ما ورد في القرآن الكريم والسنة النبوية '
+                        'الصحيحة، دون إسرائيليات ولا اجتهاد في الغيب؛ ما لم يرد به نصّ فالله أعلم. '
+                        'والله تعالى أعلم وأحكم.')
+HORROR_NOTICE = ('<aside class="story-warning"><b>تنبيه:</b> قصص الرعب تعتمد على التوتر '
+                 'والغموض فقط، بلا دماء أو تشريح أو مشاهد مرعبة، وهي مخصّصة للكبار '
+                 'الذين يحبّون الإثارة الهادئة.</aside>')
+RELIGIOUS_LEAD = ('<p class="city-lead">قصص دينية من سير الأنبياء والرسل والصحابة والخلفاء '
+                  'الراشدين رضي الله عنهم أجمعين، مبنية على النصوص القرآنية والسنة الصحيحة '
+                  'وحدها، بعيدة عن الإسرائيليات والخرافات، وفيها عبرٌ ومواعظ من الإسلام الحنيف.</p>')
 
-# The top menu has exactly these five items (SPEC §5).
+# Top menu: the seven reading sections, with the academy and the free library first-class links.
 NAV_ITEMS = (
     ("index.html", "الرئيسية", "home"),
     ("hub-stories.html", "عالم القصص", "hub-stories"),
     ("hub-kids.html", "ركن الأطفال", "hub-kids"),
+    ("ai-academy.html", "🎓 أكاديمية الذكاء الاصطناعي", "ai-academy"),
+    ("category-ar_books.html", "📚 المكتبة الرقمية المجانية", "ar_books"),
     ("flashes.html", "الومضات والحلقات", "flashes"),
     ("about.html", "عن المدونة", "about"),
 )
@@ -129,7 +139,7 @@ POLL_BANK = [
 
 SW_JS = """/* مملكة الأسرار service worker: instant repeat visits + offline fallback */
 const V = 'np-__VERSION__';
-const CORE = ['./', 'style.css', 'site.js', 'tools.js', 'logo.webp'];
+const CORE = ['./', 'style.css', 'site.js', 'tools.js', 'logo.webp?v=amiri20261118d'];
 self.addEventListener('install', e => {
   self.skipWaiting();
   e.waitUntil(caches.open(V).then(c => Promise.allSettled(CORE.map(u => c.add(u)))));
@@ -346,8 +356,8 @@ def head(title, desc, pre, canonical="", image="", extra=""):
 <meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(desc)}"><meta property="og:type" content="website"><meta property="og:site_name" content="مملكة الأسرار Kingdom Of Secrets"><meta name="twitter:card" content="summary_large_image">{og}{can}
 <script>try{{var t=localStorage.getItem('np-theme');if(t)document.documentElement.setAttribute('data-theme',t)}}catch(e){{}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" onload="this.onload=null;this.rel='stylesheet'">
-<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap"></noscript>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&display=swap"></noscript>
 <meta name="theme-color" content="#0b3c7a">
 <link rel="manifest" href="{pre}manifest.webmanifest"><link rel="icon" type="image/png" href="{pre}icon-192.png"><link rel="apple-touch-icon" href="{pre}icon-192.png">
 <link rel="alternate" type="application/rss+xml" title="مملكة الأسرار Kingdom Of Secrets" href="{pre}feed.xml">
@@ -362,7 +372,7 @@ def HAS_DEALS():
 
 
 def live_categories(data):
-    """All 13 sections always get a page (even when empty), so the reader sees the full structure."""
+    """All 14 sections always get a page (even when empty), so the reader sees the full structure."""
     return list(CATEGORIES)
 
 
@@ -378,14 +388,14 @@ def header(pre, data, active):
 <button class="lang-btn" data-l="ar">العربية</button>|<button class="lang-btn" data-l="fr">Français</button>|<button class="lang-btn" data-l="en">English</button></div></div>
 </div></div>
 <header class="main-header"><div class="container flex">
-<a href="{pre}index.html" class="notranslate logo"><img src="{pre}logo.webp" width="165" height="90" alt="مملكة الأسرار Kingdom Of Secrets"></a>
+<a href="{pre}index.html" class="notranslate logo"><img src="{pre}logo.webp?v=amiri20261118d" width="165" height="90" alt="مملكة الأسرار Kingdom Of Secrets"></a>
 <div class="header-tag">قصص إبداعية يكتبها نكسوس</div>
 <form class="hsearch" action="{pre}search.html" role="search"><input name="q" type="search" placeholder="ابحث في قصص المدونة…" aria-label="بحث"><button type="submit" aria-label="بحث">🔍</button></form></div></header>
 <nav class="main-nav"><div class="container"><ul class="nav-menu">{nav}</ul></div></nav>"""
 
 
-def footer(pre, data):
-    """Exactly the three groups of SPEC §10, plus the fixed literary disclaimer."""
+def footer(pre, data, note=""):
+    """Exactly the three groups of SPEC §10, plus the page-appropriate disclaimer."""
     about_links = (f'<li><a href="{pre}about.html">عن المدونة</a></li>'
                    f'<li><a href="{pre}disclaimer.html">إخلاء المسؤولية الأدبي</a></li>')
     contact_links = (f'<li><a href="{pre}contact.html">اتصل بي / اقترح فكرة</a></li>'
@@ -397,7 +407,7 @@ def footer(pre, data):
 <div><h4>من نحن وإخلاء المسؤولية</h4><ul>{about_links}</ul></div>
 <div><h4>تواصل معي / اقترح فكرة</h4><ul>{contact_links}</ul></div>
 <div><h4>سياسة الخصوصية وحقوق النشر</h4><ul>{policy_links}</ul></div>
-</div><div class="footer-bottom"><p class="literary-note">{e(LITERARY_DISCLAIMER)}</p>
+</div><div class="footer-bottom"><p class="literary-note">{e(note or LITERARY_DISCLAIMER)}</p>
 © {datetime.now().year} مملكة الأسرار Kingdom Of Secrets. جميع الحقوق محفوظة.</div></footer>
 <button class="to-top" id="to-top" type="button" aria-label="أعلى الصفحة">↑</button>
 <div id="google_translate_element" style="display:none"></div>
@@ -519,7 +529,7 @@ def poll_widget(poll):
 
 
 def services_widget(pre):
-    """AI academy, weather, the free library and (when present) Amazon deals stay out of the top menu."""
+    """Quick links repeated in the sidebar: academy, weather, free library and Amazon deals."""
     items = [("ai-academy.html", "🎓 أكاديمية الذكاء الاصطناعي"),
              ("weather.html", "🌦️ الطقس ومواقيت الصلاة"),
              ("category-ar_books.html", "📚 المكتبة الرقمية المجانية")]
@@ -558,6 +568,9 @@ def inline_md(text):
 def render_body(content, clean=True):
     if style_guide and clean:
         content = "\n\n".join(style_guide.clean_body(content, as_list=True))
+    if isinstance(content, (list, tuple)):
+        content = "\n\n".join(str(p) for p in content)
+    content = str(content or "")
     out, n = [], 0
     for block in re.split(r"\n\s*\n", content.strip()):
         block = block.strip()
@@ -587,17 +600,19 @@ def share_bar():
 
 
 def reading_time(text):
-    return max(1, round(len(re.findall(r"\S+", text)) / 190))
+    if isinstance(text, (list, tuple)):
+        text = "\n\n".join(str(p) for p in text)
+    return max(1, round(len(re.findall(r"\S+", str(text))) / 190))
 
 
-def shell(title, desc, pre, canonical, data, active, inner, poll, extra_head="", image=""):
+def shell(title, desc, pre, canonical, data, active, inner, poll, extra_head="", image="", note=""):
     return (head(title, desc, pre, canonical, image, extra_head) + header(pre, data, active)
-            + f'<div class="container">{ad("top")}{inner}{ad("bottom")}</div>' + footer(pre, data))
+            + f'<div class="container">{ad("top")}{inner}{ad("bottom")}</div>' + footer(pre, data, note))
 
 
 # ----------------------------------------------------------------------------- build
-def write_page(name, title, desc, pre, canonical, data, active, inner, poll, extra_head="", image=""):
-    (ROOT / name).write_text(shell(title, desc, pre, canonical, data, active, inner, poll, extra_head, image), encoding="utf-8")
+def write_page(name, title, desc, pre, canonical, data, active, inner, poll, extra_head="", image="", note=""):
+    (ROOT / name).write_text(shell(title, desc, pre, canonical, data, active, inner, poll, extra_head, image, note), encoding="utf-8")
 
 
 def build():
@@ -666,11 +681,12 @@ def build():
         f'<span class="badge">{e(WORD_HINTS[k])}</span><h3>{e(CATEGORIES[k])}</h3>'
         f'<p>{len(data[k])} قصة متاحة</p></div></a>' for k in GROUP_STORIES)
     inner = ('<div class="layout"><main><div class="page hub"><h1>عالم القصص</h1>'
-             '<p class="lead">سبعة تصنيفات أدبية يكتبها نكسوس لتقرأها وقت ما تشاء. '
+             '<p class="lead">ثمانية تصنيفات يكتبها نكسوس لتقرأها وقت ما تشاء: سبعة ألوان أدبية '
+             'إضافةً إلى قصص دينية مستندة إلى القرآن والسنة الصحيحة. '
              f'{e(LITERARY_DISCLAIMER)}</p><div class="grid">{genre_cards}</div></div></main>'
              f'{sidebar("", data, poll)}</div>')
     write_page("hub-stories.html", "عالم القصص | مملكة الأسرار",
-               "التصنيفات الأدبية السبعة في مملكة الأسرار: واقعي وإنساني، غموض، خيال علمي، فانتازيا، رعب نفسي، تاريخي وكوميديا.",
+               "التصنيفات الثمانية في مملكة الأسرار: واقعي وإنساني، غموض، خيال علمي، فانتازيا، قصص رعب، تاريخي، كوميديا، وقصص دينية.",
                "", f"{base}/hub-stories.html" if base else "", data, "hub-stories", inner, poll)
 
     # ---- hub: ركن الأطفال (3 age cards with age badges)
@@ -700,22 +716,27 @@ def build():
                "القصص الومضية والمسلسلة والتفاعلية في مملكة الأسرار، حيث يختار القارئ النهاية.",
                "", f"{base}/flashes.html" if base else "", data, "flashes", inner, poll)
 
-    # ---- category pages (13) + article pages
+    # ---- category pages (14) + article pages
     for k in live:
         name = CATEGORIES[k]
+        religious = k == "story_religious"
+        note = RELIGIOUS_DISCLAIMER if religious else LITERARY_DISCLAIMER
         cards = "".join(card(a, "", k) for a in data[k]) or '<div class="empty">لا توجد قصص في هذا الجزء بعد.</div>'
         hint = f'<p class="word-hint">📏 عدد الكلمات: {e(WORD_HINTS[k])}</p>'
         extra = OPINION_LEAD if k in GROUP_OPINION else (BOOKS_LEAD if k == "ar_books" else "")
+        if religious:
+            extra = RELIGIOUS_LEAD
         if k == "ar_books" and not data[k]:
             extra += ('<div class="empty">قوائم الكتب تُبنى آلياً من مستودع Free Programming Books؛ '
                       'تظهر هنا فور اكتمال أول قائمة من خمسة كتب حقيقية.</div>')
         warning = HORROR_NOTICE if k == "story_horror" else ""
         inner = (f'<div class="layout"><main><h1 class="block-title">{e(name)}</h1>{hint}{warning}{extra}'
                  f'<div class="grid">{cards}</div>{ad("middle")}'
-                 f'<p class="literary-note">{e(LITERARY_DISCLAIMER)}</p></main>{sidebar("", data, poll)}</div>')
+                 f'<p class="literary-note">{e(note)}</p></main>{sidebar("", data, poll)}</div>')
         write_page(f"category-{k}.html", f"{name} | مملكة الأسرار",
-                   f"قصص {name} في مملكة الأسرار. {LITERARY_DISCLAIMER}", "",
-                   f"{base}/category-{k}.html" if base else "", data, k, inner, poll)
+                   f"قصص {name} في مملكة الأسرار. {note}", "",
+                   f"{base}/category-{k}.html" if base else "", data, k, inner, poll,
+                   note=RELIGIOUS_DISCLAIMER if religious else "")
 
         for a in data[k]:
             chips = tag_chips(a)
@@ -726,8 +747,11 @@ def build():
             opinion_note = OPINION_LEAD if k in GROUP_OPINION else ""
             warning_html = (f'<aside class="story-warning"><b>تنبيه:</b> {e(a["warning"])}</aside>'
                             if a.get("warning") else "")
-            author_note = f'<aside class="author-note">{e(LITERARY_DISCLAIMER)}</aside>'
+            author_note = (f'<aside class="author-note">{e(RELIGIOUS_DISCLAIMER if k == "story_religious" else LITERARY_DISCLAIMER)}</aside>')
             src_html = ""
+            if k == "story_religious":
+                src_html = ('<div class="sources"><b>📖 المرجع:</b><p class="src-hint">القرآن الكريم والسنة النبوية '
+                            'الصحيحة، بعيداً عن الإسرائيليات والروايات الضعيفة؛ وما لم يرد به نصّ فالله تعالى أعلم.</p></div>')
             if (k == "ar_books" or k in GROUP_OPINION) and a.get("sources"):
                 src = "".join(f'<li><a href="{e(s["url"])}" rel="nofollow noopener" target="_blank">{e(s.get("publisher", s["url"]))}</a></li>'
                               for s in a["sources"])
@@ -778,7 +802,8 @@ def build():
 <section class="related"><h2 class="block-title">قصص ذات صلة</h2><div class="grid">{related}</div></section></main>{sidebar("../", data, poll)}</div>"""
             write_page(f"articles/{a['id']}.html", f'{a["title"]} | مملكة الأسرار', a.get("summary", a["title"]),
                        "../", url, data, k, inner, poll,
-                       f'<script type="application/ld+json">{ld}</script>', img_abs)
+                       f'<script type="application/ld+json">{ld}</script>', img_abs,
+                       note=RELIGIOUS_DISCLAIMER if k == "story_religious" else "")
             urls.append(f"articles/{a['id']}.html")
 
     # ---- AI academy (generated so the hourly quality gate never fails on a missing page)
@@ -829,7 +854,7 @@ def build():
         "display": "standalone", "background_color": "#f5f8fb", "theme_color": "#0b3c7a",
         "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}]},
         ensure_ascii=False), encoding="utf-8")
-    ver = (allart[0][1]["date"] if allart else "0").replace(":", "").replace("-", "")[:12] + str(len(allart))
+    ver = (allart[0][1]["date"] if allart else "0").replace(":", "").replace("-", "")[:12] + str(len(allart)) + "-amiri20261118d"
     (ROOT / "sw.js").write_text(SW_JS.replace("__VERSION__", ver), encoding="utf-8")
     if base:
         (ROOT / "robots.txt").write_text(
