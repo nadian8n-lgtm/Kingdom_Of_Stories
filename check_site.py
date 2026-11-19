@@ -25,15 +25,16 @@ except Exception:
 ROOT = Path(__file__).parent
 SKIP_PREFIX = ("http:", "https:", "//", "mailto:", "tel:", "data:", "#", "javascript:")
 
-# SPEC §4: exactly these 13 keys/labels, in this order.
+# SPEC §4: exactly these 14 keys/labels, in this order.
 EXPECTED_CATEGORIES = {
     "story_realistic": "واقعي وإنساني",
     "story_mystery": "غموض وإثارة",
     "story_scifi": "خيال علمي وتكنولوجيا",
     "story_fantasy": "فانتازيا ومغامرات",
-    "story_horror": "رعب نفسي",
+    "story_horror": "قصص رعب",
     "story_history": "تاريخي وثقافي",
     "story_comedy": "كوميديا وسخرية",
+    "story_religious": "قصص دينية",
     "kids_3_6": "براعم الصغار (3-6 سنوات)",
     "kids_7_10": "مغامرو المستقبل (7-10 سنوات)",
     "kids_11_14": "يافعون ومراهقون (11-14 سنة)",
@@ -58,10 +59,12 @@ AGE_LABELS_EXPECTED = {
     "kids_7_10": "7-10 سنوات",
     "kids_11_14": "11-14 سنة",
 }
-NAV_LABELS = ("الرئيسية", "عالم القصص", "ركن الأطفال", "الومضات والحلقات", "عن المدونة")
+NAV_LABELS = ("الرئيسية", "عالم القصص", "ركن الأطفال", "🎓 أكاديمية الذكاء الاصطناعي",
+              "📚 المكتبة الرقمية المجانية", "الومضات والحلقات", "عن المدونة")
 
 # SPEC §10/§12: the fixed literary disclaimer must survive on every article page.
 LITERARY_DISCLAIMER = "أي تشابه مع الواقع محض صدفة"
+RELIGIOUS_DISCLAIMER = "والله تعالى أعلم وأحكم"
 DISCLAIMER_PAGE = "disclaimer.html"
 DISCLAIMER_TITLE = "إخلاء مسؤولية"
 OPINION_PHRASES = ("رأي شخصي", "وجهة نظر")
@@ -201,8 +204,8 @@ def check_nav(text, rel):
         add(f"{rel}: missing <ul class=\"nav-menu\">")
         return
     items = re.findall(r"<li\b[^>]*>(.*?)</li>", m.group(1), re.I | re.S)
-    if len(items) != 5:
-        add(f"{rel}: nav-menu has {len(items)} <li> items (must be exactly 5)")
+    if len(items) != 7:
+        add(f"{rel}: nav-menu has {len(items)} <li> items (must be exactly 7)")
         return
     labels = [" ".join(unescape(re.sub(r"<[^>]*>", "", li)).split()) for li in items]
     if tuple(labels) != NAV_LABELS:
@@ -223,7 +226,7 @@ data = load_data()
 # ---- 1. authoritative builder contract --------------------------------------
 builder_cats = getattr(build_site, "CATEGORIES", {}) or {}
 if set(builder_cats) != set(EXPECTED_CATEGORIES):
-    add(f"category keys are not the 13 story-blog keys: {sorted(builder_cats)}")
+    add(f"category keys are not the 14 story-blog keys: {sorted(builder_cats)}")
 for key, name in EXPECTED_CATEGORIES.items():
     if builder_cats.get(key) != name:
         add(f"category label for {key}: {builder_cats.get(key)!r} != {name!r}")
@@ -346,8 +349,9 @@ for key, arts in data.items():
         if text is None:
             text = read_text(apage)
 
-        if LITERARY_DISCLAIMER not in text:
-            add(f"{aid}: article page missing «{LITERARY_DISCLAIMER}»")
+        needed = RELIGIOUS_DISCLAIMER if key == "story_religious" else LITERARY_DISCLAIMER
+        if needed not in text:
+            add(f"{aid}: article page missing «{needed}»")
 
         # SPEC §6/§12: every tag on an article must be rendered as a plain chip.
         keys = tag_keys(a)
