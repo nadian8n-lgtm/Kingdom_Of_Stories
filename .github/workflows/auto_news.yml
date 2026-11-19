@@ -45,6 +45,9 @@ jobs:
         with:
           node-version: '24'
       - run: pip install pillow edge-tts imageio-ffmpeg internetarchive
+
+      - name: NP preflight self-repair (syntax + thumbnails)
+        run: python preflight_repair.py
       - name: تثبيت حزمة Google Gen AI لتوليد القصص (خارج المستودع)
         run: |
           mkdir -p "$RUNNER_TEMP/genai"
