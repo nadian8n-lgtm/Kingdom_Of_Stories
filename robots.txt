@@ -3,4 +3,9 @@ Allow: /
 Disallow: /admin/
 Disallow: /admin.html
 
-Sitemap: https://nadian8n-lgtm.github.io/Nexus_Press/sitemap.xml
+User-agent: *
+Noindex: /admin/, /admin.html
+
+# Privacy: no indexing, no following, no archives, no snippets, no image indexing.
+Directive: noindex,nofollow,noarchive,nosnippet,noimageindex
+Meta-Robots: noindex,nofollow,noarchive,nosnippet,noimageindex
