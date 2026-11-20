@@ -35,7 +35,8 @@ ADSENSE_CLIENT = os.getenv("ADSENSE_CLIENT", "")  # ca-pub-XXXXXXXXXXXXXXXX afte
 NEWSLETTER_BUTTONDOWN = os.getenv("NEWSLETTER_BUTTONDOWN", "")
 # Google Apps Script web-app URL (Code.gs): contact form + newsletter. Set it as GitHub variable NP_API.
 NP_API = os.getenv("NP_API", "").strip()
-POLL_NS = "np-" + (re.sub(r"[^a-z0-9]+", "-", REPO.lower()).strip("-") if REPO else "nexus-blog")
+# ثابت لا يُشتق من اسم المستودع حتى لا تصفّر أصوات الاستطلاع عند إعادة التسمية
+POLL_NS = os.getenv("NP_POLL_NS") or "np-nexus-press"
 
 # The 14 sections of the story blog (SPEC §4): 8 fiction genres + 3 kids + 3 services.
 CATEGORIES = {
@@ -353,6 +354,8 @@ def head(title, desc, pre, canonical="", image="", extra=""):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{e(title)}</title>
 <meta name="description" content="{e(desc)}">
+<meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
+<meta name="googlebot" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
 <meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(desc)}"><meta property="og:type" content="website"><meta property="og:site_name" content="مملكة الأسرار Kingdom Of Secrets"><meta name="twitter:card" content="summary_large_image">{og}{can}
 <script>try{{var t=localStorage.getItem('np-theme');if(t)document.documentElement.setAttribute('data-theme',t)}}catch(e){{}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -459,12 +462,31 @@ def age_badge(cat):
 def video_player(a, pre):
     """Optional film from SPEC §7/§12. Returns '' when the story has no usable video dict."""
     v = a.get("video")
-    if not isinstance(v, dict) or not v.get("url"):
+    if not isinstance(v, dict):
         return ""
+    parts = v.get("parts")
+    if isinstance(parts, list) and parts:
+        blocks = []
+        for idx, part in enumerate(parts, 1):
+            entry = {k: val for k, val in v.items() if k != "parts"}
+            if isinstance(part, dict):
+                entry.update(part)
+            else:
+                entry["url"] = str(part)
+            blocks.append(_video_one(entry, pre, f" #{idx}"))
+        return "\n".join(blocks)
+    if not v.get("url"):
+        return ""
+    return _video_one(v, pre)
+
+
+def _video_one(v, pre, label=""):
     poster = str(v.get("poster") or "").strip()
     if poster and not poster.startswith(("http://", "https://")):
         poster = pre + poster.lstrip("/")
     url = str(v.get("url") or "").strip()
+    if url and not url.startswith(("http://", "https://")):
+        url = pre + url.lstrip("/")
     page = str(v.get("page") or "").strip()
     detail = ["🎬 فيلم القصة"]
     try:
@@ -479,12 +501,29 @@ def video_player(a, pre):
             detail.append(f"{scenes} مشهد")
     except (TypeError, ValueError):
         pass
+    if label:
+        detail.append(label.strip())
     link = (f' <a href="{e(page)}" rel="nofollow noopener" target="_blank">شاهد على Internet Archive</a>'
             if page else "")
     return (f'<div class="story-video"><video controls playsinline preload="metadata" poster="{e(poster)}">'
             f'<source src="{e(url)}" type="video/mp4">'
             'متصفحك لا يدعم تشغيل الفيديو (your browser does not support video).'
             f'</video><p class="video-meta">{" — ".join(e(x) for x in detail)}.{link}</p></div>')
+
+
+def audio_player(a, pre):
+    """Optional narration audio. Returns '' when the article has no audio dict."""
+    s = a.get("audio")
+    if isinstance(s, str) and s.strip():
+        s = {"url": s}
+    if not isinstance(s, dict) or not s.get("url"):
+        return ""
+    url = str(s["url"]).strip()
+    if not url.startswith(("http://", "https://")):
+        url = pre + url.lstrip("/")
+    title = str(s.get("title") or "استمع إلى القصة")
+    return (f'<div class="story-audio"><p class="audio-label">🎧 {e(title)}</p>'
+            f'<audio controls preload="none" src="{e(url)}"></audio></div>')
 
 
 def card(a, pre, cat, eager=False, extra=""):
@@ -744,6 +783,7 @@ def build():
             hashes = hashtag_chips(a)
             hashtags_block = f'<div class="hashtags">{hashes}</div>' if hashes else ""
             video_html = video_player(a, "../")
+            audio_html = audio_player(a, "../")
             opinion_note = OPINION_LEAD if k in GROUP_OPINION else ""
             warning_html = (f'<aside class="story-warning"><b>تنبيه:</b> {e(a["warning"])}</aside>'
                             if a.get("warning") else "")
@@ -787,6 +827,7 @@ def build():
 <div class="meta">نكسوس · {e(a["date"][:10])} · ⏱ {rt} د للقراءة</div>
 {tags_block}
 {hashtags_block}
+{audio_html}
 {video_html}
 {opinion_note}
 {share_bar()}
@@ -826,7 +867,7 @@ def build():
     write_page("search.html", "البحث | مملكة الأسرار", "ابحث في قصص مملكة الأسرار.", "",
                f"{base}/search.html" if base else "", data, "",
                f'<div class="layout"><main>{sr}</main>{sidebar("", data, poll)}</div>', poll,
-               '<meta name="robots" content="noindex,follow">')
+               '')
     index = [{"i": a["id"], "t": a["title"], "s": a.get("summary", ""), "c": CATEGORIES[k], "d": a["date"][:10],
               "h": a.get("hashtags") or [], "m": cdn(a, 480) or thumb(a["image"])}
              for k, a in allart]
