@@ -3,9 +3,4 @@ Allow: /
 Disallow: /admin/
 Disallow: /admin.html
 
-User-agent: *
-Noindex: /admin/, /admin.html
-
-# Privacy: no indexing, no following, no archives, no snippets, no image indexing.
-Directive: noindex,nofollow,noarchive,nosnippet,noimageindex
-Meta-Robots: noindex,nofollow,noarchive,nosnippet,noimageindex
+Sitemap: https://nadian8n-lgtm.github.io/Kingdom_Of_Stories/sitemap.xml

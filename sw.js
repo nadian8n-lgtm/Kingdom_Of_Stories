@@ -1,6 +1,6 @@
 /* مملكة الأسرار service worker: instant repeat visits + offline fallback */
-const V = 'np-20261118T12016';
-const CORE = ['./', 'style.css', 'site.js', 'tools.js', 'logo.webp'];
+const V = 'np-20261120T12035-amiri20261118d';
+const CORE = ['./', 'style.css', 'site.js', 'tools.js', 'logo.webp?v=amiri20261118d'];
 self.addEventListener('install', e => {
   self.skipWaiting();
   e.waitUntil(caches.open(V).then(c => Promise.allSettled(CORE.map(u => c.add(u)))));
