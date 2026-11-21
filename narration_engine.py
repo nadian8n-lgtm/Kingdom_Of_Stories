@@ -495,7 +495,11 @@ async def _synth_many(chunks: list[str], profiles: list[dict], work: Path, retri
             last: Exception | None = None
             for attempt in range(1, retries + 1):
                 try:
-                    words = await _synth_chunk(text, profiles[i - 1], mp3)
+                    # Hard wall-clock cap: edge-tts sometimes keeps a websocket
+                    # open forever even when receive_timeout has fired.
+                    words = await asyncio.wait_for(
+                        _synth_chunk(text, profiles[i - 1], mp3), timeout=300
+                    )
                     return i, mp3, words
                 except Exception as e:  # noqa: BLE001
                     last = e
