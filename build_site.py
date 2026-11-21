@@ -90,16 +90,53 @@ RELIGIOUS_LEAD = ('<p class="city-lead">قصص دينية من سير الأنب
                   'الراشدين رضي الله عنهم أجمعين، مبنية على النصوص القرآنية والسنة الصحيحة '
                   'وحدها، بعيدة عن الإسرائيليات والخرافات، وفيها عبرٌ ومواعظ من الإسلام الحنيف.</p>')
 
-# Top menu: the seven reading sections, with the academy and the free library first-class links.
-NAV_ITEMS = (
-    ("index.html", "الرئيسية", "home"),
-    ("hub-stories.html", "عالم القصص", "hub-stories"),
-    ("hub-kids.html", "ركن الأطفال", "hub-kids"),
-    ("ai-academy.html", "🎓 أكاديمية الذكاء الاصطناعي", "ai-academy"),
-    ("category-ar_books.html", "📚 المكتبة الرقمية المجانية", "ar_books"),
-    ("flashes.html", "الومضات والحلقات", "flashes"),
-    ("about.html", "عن المدونة", "about"),
+# Top menu: 7 roots, every original section/subsection reachable underneath them.
+# The whole 14-section tree is exposed; nothing is hidden behind the admin area.
+NAV_ROOTS = (
+    ("index.html", "الرئيسية", "home", ""),
+    ("hub-stories.html", "عالم القصص", "hub-stories", "stories"),
+    ("hub-kids.html", "ركن الأطفال", "hub-kids", "kids"),
+    ("category-ar_tech.html", "قراءات نكسوس", "opinion", "opinion"),
+    ("category-ar_books.html", "📚 المكتبة الرقمية", "ar_books", ""),
+    ("deals/index.html", "🛒 عروض أمازون", "deals", ""),
+    ("ai-academy.html", "🎓 الأكاديمية والخدمات", "services", "services"),
 )
+
+
+def nav_roots():
+    """Keep exactly seven roots even when the generated deals page is absent."""
+    out = []
+    for url, label, key, group in NAV_ROOTS:
+        if key == "deals" and not HAS_DEALS():
+            out.append(("weather.html", "🌦️ الطقس ومواقيت الصلاة", "weather", ""))
+        else:
+            out.append((url, label, key, group))
+    return out
+
+
+def nav_children(group):
+    """All subsections under each root of the top bar."""
+    if group == "stories":
+        return ([(f"category-{k}.html", CATEGORIES[k], k) for k in GROUP_STORIES]
+                + [("flashes.html", "الومضات والحلقات", "flashes"),
+                   ("media.html", "🎧 الصوت والفيديو", "media")])
+    if group == "kids":
+        return [(f"category-{k}.html", CATEGORIES[k], k) for k in GROUP_KIDS]
+    if group == "opinion":
+        return [("category-ar_tech.html", CATEGORIES["ar_tech"], "ar_tech"),
+                ("category-ar_arts.html", CATEGORIES["ar_arts"], "ar_arts"),
+                ("search.html", "🔎 البحث في الموقع", "search")]
+    if group == "services":
+        return [("ai-academy.html", "🎓 أكاديمية الذكاء الاصطناعي", "ai-academy"),
+                ("media.html", "🎧 الصوت والفيديو", "media"),
+                ("weather.html", "🌦️ الطقس ومواقيت الصلاة", "weather"),
+                ("about.html", "عن المدونة", "about"),
+                ("disclaimer.html", "إخلاء المسؤولية الأدبي", "disclaimer"),
+                ("contact.html", "اتصل بي / اقترح فكرة", "contact"),
+                ("privacy-policy.html", "سياسة الخصوصية", "privacy-policy"),
+                ("editorial-policy.html", "سياسة المحتوى وحقوق النشر", "editorial-policy"),
+                ("terms.html", "شروط الاستخدام", "terms")]
+    return []
 
 # Old newspaper pages are removed on every rebuild; ar_tech/ar_arts are now valid opinion
 # sections and ar_books is a permanent story-blog page, so none of them is ever removed.
@@ -380,8 +417,20 @@ def live_categories(data):
 
 
 def header(pre, data, active):
-    nav = "".join(f'<li><a href="{pre}{u}"{" class=active" if active == key else ""}>{e(n)}</a></li>'
-                  for u, n, key in NAV_ITEMS)
+    roots = []
+    for url, label, key, group in nav_roots():
+        kids = nav_children(group)
+        root_active = active == key or any(active == ck for _, _, ck in kids)
+        sub = ""
+        if kids:
+            links = "".join(
+                f'<a href="{pre}{su}"{" class=active" if active == sk else ""}>{e(sn)}</a>'
+                for su, sn, sk in kids)
+            sub = f'<div class="sub-menu">{links}</div>'
+        cls = ' class="nav-root has-sub"' if kids else ""
+        roots.append(f'<li{cls}><a class="nav-top{" active" if root_active else ""}" '
+                     f'href="{pre}{url}">{e(label)}</a>{sub}</li>')
+    nav = "".join(roots)
     return f"""<body data-pre="{pre}" data-api="{e(NP_API)}">
 <div class="progress" id="progress"></div>
 <div class="top-bar notranslate"><div class="container flex">
@@ -574,8 +623,52 @@ def services_widget(pre):
              ("category-ar_books.html", "📚 المكتبة الرقمية المجانية")]
     if HAS_DEALS():
         items.append(("deals/index.html", "🛒 عروض أمازون"))
+    items.insert(1, ("media.html", "🎧 الصوت والفيديو"))
     links = "".join(f'<li><a href="{pre}{u}">{e(n)}</a></li>' for u, n in items)
     return f'<div class="widget services-box"><h4>🔎 استكشف مملكة الأسرار</h4><ul>{links}</ul></div>'
+
+
+def media_library(data, poll):
+    """A single, light page for every narrated story: audio + static video, preload=none."""
+    blocks = []
+    for title, keys in (("قصص الكبار", GROUP_STORIES), ("قصص الأطفال", GROUP_KIDS)):
+        cards = []
+        for k in keys:
+            for a in data[k]:
+                video, audio = a.get("video"), a.get("audio")
+                if not video and not audio:
+                    continue
+                art = f'articles/{a["id"]}.html'
+                poster = e(a.get("image") or "")
+                clips = ""
+                if video:
+                    urls = ([(video["url"], "شاهد القصة")] if video.get("url")
+                            else [(p["url"], f"الجزء {i}")
+                                  for i, p in enumerate(video.get("parts", []), 1)])
+                    for url, label in urls:
+                        clips += (f'<div class="media-clip"><span class="media-label">{e(label)}</span>'
+                                  f'<video controls preload="none" playsinline poster="{poster}">'
+                                  f'<source src="{e(url)}" type="video/mp4">'
+                                  'متصفّحك لا يدعم تشغيل الفيديو.</video></div>')
+                if audio and audio.get("url"):
+                    clips += (f'<div class="media-clip"><span class="media-label">🎧 '
+                              f'{e(audio.get("title") or "استمع إلى القصة")}</span>'
+                              f'<audio controls preload="none"><source src="{e(audio["url"])}" '
+                              'type="audio/mp4">متصفّحك لا يدعم تشغيل الصوت.</audio></div>')
+                cards.append(
+                    f'<article class="media-card"><h3><a href="{art}">{e(a["title"])}</a></h3>'
+                    f'<p class="media-cat"><span class="badge">{e(CATEGORIES[k])}</span></p>'
+                    f'{clips}<a class="btn media-read" href="{art}">اقرأ القصة كاملة ←</a></article>')
+        if cards:
+            blocks.append(f'<section class="sect"><h2 class="block-title">{e(title)}</h2>'
+                          f'<div class="media-grid">{"".join(cards)}</div></section>')
+    if not blocks:
+        blocks = ['<div class="empty">تظهر هنا كل القصص المرويّة صوتياً والمرئية حين تجهز.</div>']
+    inner = ('<div class="layout"><main><div class="page media-page"><h1>🎧 الصوت والفيديو</h1>'
+             '<p class="lead">استمع إلى قصص مملكة الأسرار بصوت نكسوس، أو شاهدها كفيديو ثابت '
+             'مع التعليق الصوتي. كل شيء هنا مجاني، وبلا إعلانات مُقحمة داخل المشهد.</p>'
+             + "".join(blocks) + '</div></main>' + sidebar("", data, poll) + '</div>')
+    return inner
 
 
 def sidebar(pre, data, poll):
@@ -669,7 +762,7 @@ def build():
         (ROOT / stale).unlink(missing_ok=True)
     for stale in ROOT.glob("city-*.html"):
         stale.unlink()
-    urls = (["index.html", "hub-stories.html", "hub-kids.html", "flashes.html"]
+    urls = (["index.html", "hub-stories.html", "hub-kids.html", "media.html", "flashes.html"]
             + [f"category-{k}.html" for k in live]
             + ["weather.html", "search.html", "about.html", "contact.html", "privacy-policy.html",
                "editorial-policy.html", "terms.html", "disclaimer.html", "ai-academy.html"])
@@ -740,6 +833,12 @@ def build():
     write_page("hub-kids.html", "ركن الأطفال | مملكة الأسرار",
                "ثلاث فئات عمرية في ركن الأطفال: 3-6 سنوات، 7-10 سنوات، 11-14 سنة، بقصص آمنة ولغة بسيطة.",
                "", f"{base}/hub-kids.html" if base else "", data, "hub-kids", inner, poll)
+
+    # ---- media: every narrated / filmed story in one light, browseable page
+    write_page("media.html", "الصوت والفيديو | مملكة الأسرار",
+               "قصص مملكة الأسرار مرويّة صوتياً بصوت نكسوس، ومتاحة أيضاً كفيديو ثابت مع تعليق صوتي، للكبار والأطفال.",
+               "", f"{base}/media.html" if base else "", data, "media",
+               media_library(data, poll), poll)
 
     # ---- flashes: stories tagged flash / serial / interactive
     flash_items = [(k, a) for k in live for a in data[k]
