@@ -59,8 +59,8 @@ AGE_LABELS_EXPECTED = {
     "kids_7_10": "7-10 سنوات",
     "kids_11_14": "11-14 سنة",
 }
-NAV_LABELS = ("الرئيسية", "عالم القصص", "ركن الأطفال", "🎓 أكاديمية الذكاء الاصطناعي",
-              "📚 المكتبة الرقمية المجانية", "الومضات والحلقات", "عن المدونة")
+NAV_LABELS = ("الرئيسية", "عالم القصص", "ركن الأطفال", "قراءات نكسوس",
+              "📚 المكتبة الرقمية", "🛒 عروض أمازون", "🎓 الأكاديمية والخدمات")
 
 # SPEC §10/§12: the fixed literary disclaimer must survive on every article page.
 LITERARY_DISCLAIMER = "أي تشابه مع الواقع محض صدفة"
@@ -100,7 +100,7 @@ BODY_RX = re.compile(r"<body[\s>]")
 CORE_FILES = (
     "style.css", "site.js", "tools.js", "sw.js", "logo.webp", "manifest.webmanifest",
     "feed.xml", "search.json", "sitemap.xml", "robots.txt",
-    "index.html", "hub-stories.html", "hub-kids.html", "flashes.html",
+    "index.html", "hub-stories.html", "hub-kids.html", "media.html", "flashes.html",
     "about.html", "contact.html", "privacy-policy.html", "editorial-policy.html",
     "terms.html", "404.html", "weather.html", "search.html", "ai-academy.html",
     "chat.js", DISCLAIMER_PAGE,
@@ -207,7 +207,11 @@ def check_nav(text, rel):
     if len(items) != 7:
         add(f"{rel}: nav-menu has {len(items)} <li> items (must be exactly 7)")
         return
-    labels = [" ".join(unescape(re.sub(r"<[^>]*>", "", li)).split()) for li in items]
+    # Drop the nested sub-menu panels; only the 7 root labels are compared.
+    labels = []
+    for li in items:
+        root = re.sub(r'<div\b[^>]*\bsub-menu\b.*?</div>', '', li, flags=re.I | re.S)
+        labels.append(" ".join(unescape(re.sub(r"<[^>]*>", "", root)).split()))
     if tuple(labels) != NAV_LABELS:
         add(f"{rel}: nav-menu labels {labels!r} != {list(NAV_LABELS)!r}")
 
@@ -393,25 +397,49 @@ for key, arts in data.items():
             if 'class="story-warning"' not in text:
                 add(f"{aid}: horror article page missing class=\"story-warning\"")
 
-        # Video is optional; if present it must be a complete, safe player.
+        # Video is optional; local narrated files and legacy archive.org links are both valid.
         video = a.get("video")
         if video:
             if not isinstance(video, dict):
                 add(f"{aid}: video field must be a mapping")
             else:
-                url = str(video.get("url") or "")
+                parts = video.get("parts")
+                if isinstance(parts, list) and parts:
+                    urls = [str(x.get("url") if isinstance(x, dict) else x) for x in parts]
+                else:
+                    urls = [str(video.get("url") or "")]
                 page_url = str(video.get("page") or "")
                 poster = str(video.get("poster") or "")
-                if not url.lower().endswith(".mp4"):
-                    add(f"{aid}: video url must end in .mp4 ({url[:80]!r})")
-                if not page_url.startswith("https://archive.org/details/"):
+                if not urls or any(not u.lower().endswith(".mp4") for u in urls):
+                    add(f"{aid}: video urls must end in .mp4")
+                if page_url and not page_url.startswith("https://archive.org/details/"):
                     add(f"{aid}: video page must be an archive.org details page ({page_url[:80]!r})")
                 if not poster or not inside_root(poster):
                     add(f"{aid}: video poster is missing outside ROOT ({poster[:80]!r})")
                 if 'class="story-video"' not in text:
-                    add(f"{aid}: article page missing class=\"story-video\"")
+                    add(f'{aid}: article page missing class="story-video"')
                 if "<video" not in text.lower():
                     add(f"{aid}: article page missing <video> player")
+                for u in urls:
+                    if u.startswith(("http://", "https://")):
+                        continue
+                    if not (ROOT / u.lstrip("/")).is_file():
+                        add(f"{aid}: missing local video file ({u})")
+
+        audio = a.get("audio")
+        if audio:
+            if isinstance(audio, str):
+                audio = {"url": audio}
+            if not isinstance(audio, dict):
+                add(f"{aid}: audio field must be a mapping")
+            else:
+                u = str(audio.get("url") or "")
+                if not u.lower().endswith((".mp3", ".m4a")):
+                    add(f"{aid}: audio url must end in .mp3 or .m4a ({u[:80]!r})")
+                if not u.startswith(("http://", "https://")) and not (ROOT / u.lstrip("/")).is_file():
+                    add(f"{aid}: missing local audio file ({u})")
+                if "<audio" not in text.lower():
+                    add(f"{aid}: article page missing <audio> player")
 
 # Cards on category pages must carry the same chips (build_site.card()).
 for key, keys in category_tags.items():
