@@ -67,8 +67,8 @@ AGE_LABELS_EXPECTED = {
     "kids_7_10": "7-10 سنوات",
     "kids_11_14": "11-14 سنة",
 }
-NAV_LABELS = ("الرئيسية", "عالم القصص", "ركن الأطفال", "🎓 أكاديمية الذكاء الاصطناعي",
-              "📚 المكتبة الرقمية المجانية", "الومضات والحلقات", "عن المدونة")
+NAV_LABELS = ("الرئيسية", "عالم القصص", "ركن الأطفال", "قراءات نكسوس",
+              "📚 المكتبة الرقمية", "🛒 عروض أمازون", "🎓 الأكاديمية والخدمات")
 
 LITERARY_DISCLAIMER = "أي تشابه مع الواقع محض صدفة"
 RELIGIOUS_DISCLAIMER = "والله تعالى أعلم وأحكم"
@@ -93,7 +93,7 @@ STALE_PAGES = (
 REQUIRED_PAGES = (
     "style.css", "site.js", "tools.js", "sw.js", "logo.webp", "manifest.webmanifest",
     "feed.xml", "search.json", "sitemap.xml", "robots.txt",
-    "index.html", "hub-stories.html", "hub-kids.html", "flashes.html",
+    "index.html", "hub-stories.html", "hub-kids.html", "media.html", "flashes.html",
     "about.html", "contact.html", "privacy-policy.html", "editorial-policy.html",
     "terms.html", "404.html", "weather.html", "search.html", "ai-academy.html",
     "chat.js", DISCLAIMER_PAGE,
@@ -261,7 +261,10 @@ def check_nav(text, rel):
     if len(items) != 7:
         fail(f"{rel}: nav-menu has {len(items)} <li> items (must be exactly 7)")
         return
-    labels = [" ".join(unescape(re.sub(r"<[^>]*>", "", li)).split()) for li in items]
+    labels = []
+    for li in items:
+        root = re.sub(r'<div\b[^>]*\bsub-menu\b.*?</div>', '', li, flags=re.I | re.S)
+        labels.append(" ".join(unescape(re.sub(r"<[^>]*>", "", root)).split()))
     if tuple(labels) != NAV_LABELS:
         fail(f"{rel}: nav-menu labels {labels!r} != {list(NAV_LABELS)!r}")
 
@@ -482,12 +485,18 @@ for k, arts in data.items():
             if not isinstance(video, dict):
                 fail(f"{aid}: video field must be a mapping")
             else:
-                vurl = str(video.get("url") or "")
+                urls = [str(video["url"])] if video.get("url") else []
+                for part in (video.get("parts") or []):
+                    if isinstance(part, dict) and part.get("url"):
+                        urls.append(str(part["url"]))
+                    elif isinstance(part, str) and part:
+                        urls.append(part)
                 vpage = str(video.get("page") or "")
                 poster = str(video.get("poster") or "")
-                if not vurl.lower().endswith(".mp4"):
-                    fail(f"{aid}: video url must end in .mp4 ({vurl[:80]!r})")
-                if not vpage.startswith("https://archive.org/details/"):
+                if not urls or not all(u.lower().endswith(".mp4") for u in urls):
+                    fail(f"{aid}: every video url (including parts) must end in .mp4 ({urls[:1]!r})")
+                # Local narrated videos have no archive.org page; only validate it when present.
+                if vpage and not vpage.startswith("https://archive.org/details/"):
                     fail(f"{aid}: video page must be an archive.org details page ({vpage[:80]!r})")
                 if not poster or not inside_root(poster):
                     fail(f"{aid}: video poster is missing outside ROOT ({poster[:80]!r})")
