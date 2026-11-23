@@ -1,0 +1,30 @@
+name: Kingdom Of Secrets - Site Safety Check
+
+# Safe read-only daily check: no keys, no image generation, no push, no file changes.
+# Once a day instead of every 2 hours, with a 15 minute timeout.
+# This is a safety check only. Publishing is done by uploading files to the repository.
+on:
+  schedule:
+    - cron: '0 3 * * *'   # every day at 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nexus-site-check
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check Python syntax
+        run: python -m py_compile build_site.py narration_engine.py video_bot.py
+      - name: Check site pages and links
+        run: python check_site.py
